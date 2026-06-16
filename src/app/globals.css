@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 17%;
+    --border: 140 12% 88%;
+    --input: 140 12% 88%;
+    --ring: 122 45% 34%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .card-surface {
+    @apply rounded-lg border bg-card shadow-sm;
+  }
+
+  /* Thin elegant scrollbar */
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+}

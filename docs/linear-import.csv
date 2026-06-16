@@ -1,0 +1,45 @@
+Title,Description,Status,Priority,Estimate,Labels,Milestone
+"Sign up and log in","Email/password signup + login; session; protected routes redirect to /login.",Done,High,3,"epic:auth",M1 — Clinical MVP
+"Multi-tenant data isolation","All entities scoped per nutritionist id.",Done,High,3,"epic:auth",M1 — Clinical MVP
+"Password reset","Email-based password reset flow.",Backlog,Medium,3,"epic:auth",M4 — Production Hardening
+"Secure rotating sessions","Replace plaintext-id cookie with Supabase JWT session.",Backlog,High,3,"epic:auth",M4 — Production Hardening
+"Create and edit clients","Name, contacts, goals, notes; edit modal.",Done,High,2,"epic:clients",M1 — Clinical MVP
+"Start consultation (duplicate last)","Pre-fill measurements from previous consultation.",Done,High,3,"epic:clients",M1 — Clinical MVP
+"Record anthropometry","Weight, height, perimeters, skinfolds, body fat, muscle.",Done,High,3,"epic:clients",M1 — Clinical MVP
+"Client progress dashboard","Charts for weight, BMI, composition, each perimeter.",Done,Medium,3,"epic:clients,epic:dashboard",M2 — Productivity & Calendar
+"Attach photos/files to a client","Progress photos and exam uploads.",Backlog,Low,3,"epic:clients",M5 — Advanced Clinical
+"Shareable read-only progress link","Client-facing progress page via token.",Backlog,Low,5,"epic:clients",M5 — Advanced Clinical
+"Flexible meal plan builder","Any meals, multiple options each, reorder/duplicate.",Done,High,5,"epic:plans",M1 — Clinical MVP
+"Branded PDF generation (PT/EN)","Template-faithful PDF in selected language.",Done,High,8,"epic:plans",M1 — Clinical MVP
+"Time picker for meals","Meal time uses a time input.",Done,Low,1,"epic:plans",M3 — Nutrition Engine
+"Per-plan PDF template selection","Choose classic or uploaded template per plan.",Done,Medium,3,"epic:plans",M3 — Nutrition Engine
+"Upload custom PDF templates","Per-nutritionist PDF template library.",Done,Medium,3,"epic:plans",M3 — Nutrition Engine
+"Map dynamic fields onto uploaded PDF","Coordinate mapping editor for custom templates.",Backlog,High,8,"epic:plans",M5 — Advanced Clinical
+"Email plan to client","Send generated PDF by email.",Backlog,Medium,3,"epic:plans",M4 — Production Hardening
+"Food database search","567 foods from Excel; search by name/group; kcal + macros.",Done,High,3,"epic:nutrition",M3 — Nutrition Engine
+"Energy needs + macro calculator","BMR/TDEE/target + macro split (g and g/kg).",Done,High,5,"epic:nutrition",M3 — Nutrition Engine
+"Food totals in meal plan","Structured food items; per-meal and plan totals vs target.",In Progress,High,8,"epic:nutrition",M3 — Nutrition Engine
+"Paediatric/athlete energy equations","Schofield, FAO bands, Cunningham, Ten-Haaf.",Backlog,Medium,5,"epic:nutrition",M5 — Advanced Clinical
+"METs activity expenditure","Estimate activity kcal from the METs table.",Backlog,Medium,3,"epic:nutrition",M3 — Nutrition Engine
+"Recipes browser","Recipes with ingredients and nutrition.",In Progress,Medium,5,"epic:nutrition",M3 — Nutrition Engine
+"Month calendar of appointments","See all appointments in a month view.",Done,High,3,"epic:calendar",M2 — Productivity & Calendar
+"Automatic SMS reminder 1 day before","Idempotent daily job; localized; preview without Twilio.",Done,High,5,"epic:calendar",M2 — Productivity & Calendar
+"Edit appointment date/time + reminder toggle","Edit in details modal.",Done,Medium,2,"epic:calendar",M2 — Productivity & Calendar
+"In-app upcoming-consultation notifications","Bell with live countdown for next hour.",Done,Medium,3,"epic:calendar,epic:dashboard",M2 — Productivity & Calendar
+"Multi-channel reminders (WhatsApp/email)","Add channels beyond SMS.",Backlog,Medium,5,"epic:calendar",M4 — Production Hardening
+"Reply to confirm/reschedule","Inbound message handling.",Backlog,Low,5,"epic:calendar",M5 — Advanced Clinical
+"Bilingual UI (PT-PT/EN)","Whole UI translatable; toggle.",Done,High,3,"epic:i18n",M1 — Clinical MVP
+"Independent plan/PDF language","Plan language chosen separately from UI.",Done,Medium,2,"epic:i18n",M1 — Clinical MVP
+"Add ES/FR locales","Additional languages.",Backlog,Low,3,"epic:i18n",M5 — Advanced Clinical
+"Reusable plan templates","Save and apply meal-plan templates.",Done,Medium,3,"epic:productivity",M2 — Productivity & Calendar
+"Toggleable recommendation blocks","Multilingual reusable recommendations.",Done,Medium,3,"epic:productivity",M2 — Productivity & Calendar
+"Duplicate plan","Clone a plan for fast iteration.",Done,Low,2,"epic:productivity",M2 — Productivity & Calendar
+"AI assistant (translate/improve)","Non-autonomous text helpers.",Done,Medium,3,"epic:productivity",M2 — Productivity & Calendar
+"Practice metrics dashboard","Active clients, consultations this month, plans, upcoming.",Done,Medium,3,"epic:dashboard",M2 — Productivity & Calendar
+"Revenue/no-show analytics","Business analytics.",Backlog,Low,5,"epic:dashboard",M4 — Production Hardening
+"Postgres persistence (Supabase)","Move from in-memory to Supabase with RLS.",Backlog,High,8,"epic:infra",M4 — Production Hardening
+"Object storage for uploads","Persist logos and PDF templates.",Backlog,High,3,"epic:infra",M4 — Production Hardening
+"Deploy to Vercel with reminder cron","Production deploy; daily cron live.",Backlog,High,3,"epic:infra",M4 — Production Hardening
+"Automated test suite","Unit (calculators/PDF) + e2e (core flows).",Backlog,High,5,"epic:infra",M4 — Production Hardening
+"Paediatric growth percentiles","WHO percentile charts from PEDIATRIA sheets.",Backlog,Medium,8,"epic:pediatrics",M5 — Advanced Clinical
+"Anamnese questionnaire","Per-client clinical questionnaire (ANAMNESE sheet).",Backlog,Medium,5,"epic:pediatrics",M5 — Advanced Clinical
