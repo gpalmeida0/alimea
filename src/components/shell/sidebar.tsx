@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Leaf, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { Logo } from "@/components/brand/logo";
 import { Link, usePathname } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/misc";
@@ -17,11 +18,8 @@ export interface ShellUser {
 
 function Brand() {
   return (
-    <Link href="/" className="flex items-center gap-2.5">
-      <span className="flex size-8 items-center justify-center rounded-lg bg-brand text-white shadow-sm">
-        <Leaf className="size-[18px]" />
-      </span>
-      <span className="font-serif text-2xl font-semibold tracking-tight text-foreground">Alimea</span>
+    <Link href="/" aria-label="Alimea" className="flex items-center">
+      <Logo />
     </Link>
   );
 }

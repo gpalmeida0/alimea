@@ -44,7 +44,7 @@ export function Segmented<T extends string>({
             className={cn(
               "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors [&_svg]:size-4",
               size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm",
-              active ? "bg-brand text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              active ? "bg-brand text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
             {it.icon}

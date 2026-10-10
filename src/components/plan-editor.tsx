@@ -718,7 +718,7 @@ function RecommendationPicker({
           <span className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" /> {t("insertRecommendation")}
             {selected.size > 0 && (
-              <span className="rounded-full bg-brand px-1.5 text-[10px] font-semibold text-white">{selected.size}</span>
+              <span className="rounded-full bg-brand px-1.5 text-[10px] font-semibold text-primary-foreground">{selected.size}</span>
             )}
           </span>
           <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
@@ -741,7 +741,7 @@ function RecommendationPicker({
                   <span
                     className={cn(
                       "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border",
-                      isSel ? "border-brand bg-brand text-white" : "border-muted-foreground/40",
+                      isSel ? "border-brand bg-brand text-primary-foreground" : "border-muted-foreground/40",
                     )}
                   >
                     {isSel && <Check className="size-3" />}

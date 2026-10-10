@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Cormorant_Garamond } from "next/font/google";
+import { Inter, Cormorant_Garamond, Outfit } from "next/font/google";
 import { getLocale } from "next-intl/server";
 import "./globals.css";
 
@@ -11,6 +11,9 @@ const serif = Cormorant_Garamond({
   display: "swap",
 });
 
+// Geometric sans for the wordmark only.
+const logo = Outfit({ subsets: ["latin"], weight: ["600"], variable: "--font-logo", display: "swap" });
+
 export const metadata: Metadata = {
   title: { default: "Alimea", template: "%s · Alimea" },
   description: "Produtividade clínica para nutricionistas",
@@ -18,14 +21,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2E7D32",
+  themeColor: "#222122",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale().catch(() => "pt-PT");
   return (
-    <html lang={locale} suppressHydrationWarning>
-      <body className={`${sans.variable} ${serif.variable}`}>{children}</body>
+    <html lang={locale} className={`${sans.variable} ${serif.variable} ${logo.variable}`} suppressHydrationWarning>
+      <body>{children}</body>
     </html>
   );
 }

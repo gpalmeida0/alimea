@@ -823,6 +823,42 @@
       "mfaDisabled": "Two-step verification is off",
       "mfaDisableTitle": "Turn off two-step verification?",
       "mfaDisableBody": "Your account will be protected by your password only."
+    },
+    "appearance": {
+      "title": "Appearance",
+      "subtitle": "How your workspace looks. Changes preview instantly; save to keep them.",
+      "mode": "Theme",
+      "modes": {
+        "light": "Light",
+        "dark": "Dark",
+        "system": "Match device"
+      },
+      "brandColor": "Brand colour",
+      "brandColorHint": "Used for buttons, links and highlights. Generated PDFs keep their own template design.",
+      "customColor": "Custom",
+      "colors": {
+        "green": "Green",
+        "teal": "Teal",
+        "blue": "Blue",
+        "indigo": "Indigo",
+        "purple": "Purple",
+        "rose": "Rose",
+        "terracotta": "Terracotta",
+        "taupe": "Taupe",
+        "graphite": "Graphite"
+      },
+      "corners": "Corners",
+      "cornerStyles": {
+        "sharp": "Sharp",
+        "soft": "Soft",
+        "round": "Round"
+      },
+      "headingFont": "Headings",
+      "headingFonts": {
+        "serif": "Serif",
+        "sans": "Sans-serif"
+      },
+      "reset": "Reset to default"
     }
   },
   "pdf": {

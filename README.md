@@ -51,7 +51,7 @@ always look alive). Demo login: `eduarda@alimea.app` / `alimea`. Demo data is
 lost on restart.
 
 ```bash
-npm run check      # typecheck + lint + tests
+npm run check      # typecheck + lint + tests with the 90% coverage gate
 npm test           # unit tests (formulas, reminders, dates, PDF engine)
 npm run build      # production build
 npm run pdf:sample # write a sample PDF from the seed data
@@ -142,7 +142,30 @@ One-time Supabase dashboard setup (Authentication):
 
 5. **Multi-Factor** — keep TOTP enabled.
 
-## CI
+## Appearance (per account)
 
-`.github/workflows/ci.yml` runs typecheck, lint, tests and a production build on
-every push and pull request, on GitHub's hosted runners.
+Each nutritionist styles their own workspace under *Settings → Appearance*:
+light / dark / match-device theme, brand colour (presets or any colour), corner
+roundness and heading font. Every Tailwind colour is a CSS variable
+(`globals.css` holds the default light theme); `src/lib/theme.ts` generates the
+overrides for an account — including a full brand scale with readable
+foregrounds from a single colour — and the app layout inlines them, so the
+theme is correct on first paint. Stored in `profiles.appearance` (migration
+`0006`). Generated PDFs keep their own template design.
+
+## CI & coverage
+
+`.github/workflows/ci.yml` runs on every push (any branch), every pull request
+and every merge into main, on GitHub's hosted runners:
+
+- **test** — typecheck, lint, and the unit tests with a **90% minimum** on line,
+  branch and function coverage (`npm run test:coverage`).
+- **build** — a production build.
+
+The coverage gate measures the logic layer in `src/lib` (nutrition formulas,
+reminders/SMS, PDF engine, theme, auth rate limiting, utilities). React
+components and the modules that only talk to Supabase, OpenAI or the request
+cookies are outside it — they need browser/integration tests, not unit tests.
+
+To make a failing check block merges: GitHub → Settings → Branches → add a
+protection rule for `main` requiring the *test* and *build* checks.

@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Sex } from "@/lib/nutrition/calc";
+import type { Appearance } from "@/lib/theme";
 
 export type PlanLanguage = "pt-PT" | "en";
 
@@ -32,6 +33,8 @@ export interface NutritionistProfile {
   logoUrl?: string; // path under /public or remote URL
   pdfTemplate?: string; // which built-in PDF design to use (e.g. "classic")
   interfaceLanguage: PlanLanguage;
+  /** How this account's workspace looks (theme, brand colour…). */
+  appearance?: Appearance;
 }
 
 /** Built-in PDF designs the app can render. */

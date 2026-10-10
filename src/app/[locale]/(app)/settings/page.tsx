@@ -6,6 +6,8 @@ import { isAiConfigured } from "@/lib/ai/assistant";
 import { PageHeader } from "@/components/ui/misc";
 import { SettingsForm } from "@/components/settings-form";
 import { SecuritySettings } from "@/components/security-settings";
+import { AppearanceSettings } from "@/components/appearance-settings";
+import { normalizeAppearance } from "@/lib/theme";
 import { PdfTemplatesManager } from "@/components/pdf-templates-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -35,6 +37,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ local
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader title={t("title")} subtitle={t("subtitle")} />
       <SettingsForm profile={profile} logoSrc={fileUrl(profile.logoUrl)} />
+      <AppearanceSettings appearance={normalizeAppearance(profile.appearance)} />
       <SecuritySettings loginEmail={loginEmail ?? ""} mfa={{ supported: mfa.supported, enabled: mfa.enabled }} />
       <PdfTemplatesManager templates={pdfTemplates.map((p) => ({ id: p.id, name: p.name, url: fileUrl(p.storagePath)! }))} />
       <Card>

@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Eye, EyeOff, Leaf, MailCheck } from "lucide-react";
+import { Eye, EyeOff, MailCheck } from "lucide-react";
+import { Logo } from "@/components/brand/logo";
 import { Link } from "@/i18n/routing";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
@@ -28,11 +29,10 @@ function AuthShell({ title, subtitle, children, footer }: { title: string; subti
       </div>
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
-          <span className="mb-4 flex size-12 items-center justify-center rounded-xl bg-brand text-white shadow-md">
-            <Leaf className="size-6" />
-          </span>
-          <h1 className="font-serif text-4xl font-semibold tracking-tight">Alimea</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{tApp("tagline")}</p>
+          <h1>
+            <Logo size="lg" />
+          </h1>
+          <p className="mt-3 text-sm text-muted-foreground">{tApp("tagline")}</p>
         </div>
         <div className="card-surface space-y-4 p-6 shadow-sm">
           <div>

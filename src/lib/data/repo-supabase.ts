@@ -21,6 +21,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { newId, todayISO } from "@/lib/utils";
+import { normalizeAppearance } from "@/lib/theme";
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   AuthStatus,
@@ -80,6 +81,7 @@ const toProfile = (r: Row): NutritionistProfile => ({
   logoUrl: opt(r.logo_url),
   pdfTemplate: opt(r.pdf_template),
   interfaceLanguage: r.interface_language === "en" ? "en" : "pt-PT",
+  appearance: normalizeAppearance(r.appearance),
 });
 
 const toClient = (r: Row): Client => ({
@@ -399,6 +401,7 @@ export async function updateProfile(patch: Partial<Omit<NutritionistProfile, "id
     logoUrl: "logo_url",
     pdfTemplate: "pdf_template",
     interfaceLanguage: "interface_language",
+    appearance: "appearance",
   });
   // name/email/credential are NOT NULL in the schema.
   for (const k of ["name", "email", "credential"]) if (row[k] === null) row[k] = "";

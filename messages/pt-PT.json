@@ -823,6 +823,42 @@
       "mfaDisabled": "Verificação em dois passos desativada",
       "mfaDisableTitle": "Desativar a verificação em dois passos?",
       "mfaDisableBody": "A sua conta ficará protegida apenas pela palavra-passe."
+    },
+    "appearance": {
+      "title": "Aparência",
+      "subtitle": "O aspeto do seu espaço de trabalho. As alterações são pré-visualizadas de imediato; guarde para as manter.",
+      "mode": "Tema",
+      "modes": {
+        "light": "Claro",
+        "dark": "Escuro",
+        "system": "Igual ao dispositivo"
+      },
+      "brandColor": "Cor da marca",
+      "brandColorHint": "Usada em botões, ligações e destaques. Os PDFs gerados mantêm o design do respetivo modelo.",
+      "customColor": "Personalizada",
+      "colors": {
+        "green": "Verde",
+        "teal": "Verde-azulado",
+        "blue": "Azul",
+        "indigo": "Índigo",
+        "purple": "Roxo",
+        "rose": "Rosa",
+        "terracotta": "Terracota",
+        "taupe": "Taupe",
+        "graphite": "Grafite"
+      },
+      "corners": "Cantos",
+      "cornerStyles": {
+        "sharp": "Retos",
+        "soft": "Suaves",
+        "round": "Redondos"
+      },
+      "headingFont": "Títulos",
+      "headingFonts": {
+        "serif": "Com serifa",
+        "sans": "Sem serifa"
+      },
+      "reset": "Repor predefinição"
     }
   },
   "pdf": {

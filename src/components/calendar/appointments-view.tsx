@@ -205,7 +205,7 @@ export function AppointmentsView(props: Props) {
                         >
                           <Plus className="size-3.5" />
                         </button>
-                        <span className={cn("flex size-6 items-center justify-center rounded-full text-xs", isToday && "bg-brand font-semibold text-white")}>
+                        <span className={cn("flex size-6 items-center justify-center rounded-full text-xs", isToday && "bg-brand font-semibold text-primary-foreground")}>
                           {d.getDate()}
                         </span>
                       </div>

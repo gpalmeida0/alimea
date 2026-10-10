@@ -6,6 +6,7 @@ import { redirect } from "@/i18n/routing";
 import * as repo from "@/lib/data/repo";
 import { sendDueReminders, sendReminderNow, type ReminderOutcome } from "@/lib/messaging/reminders";
 import { cloneMeals } from "@/lib/nutrition/items";
+import { normalizeAppearance, type Appearance } from "@/lib/theme";
 import type {
   Anamnesis,
   EnergyConfig,
@@ -98,6 +99,13 @@ export async function updateProfileAction(
   refresh();
   void locale;
   return { ok: true, locale: patch.interfaceLanguage! };
+}
+
+export async function updateAppearanceAction(_locale: string, appearance: unknown): Promise<Appearance> {
+  const saved = normalizeAppearance(appearance);
+  await repo.updateProfile({ appearance: saved });
+  refresh();
+  return saved;
 }
 
 // --- Clients -------------------------------------------------------------------

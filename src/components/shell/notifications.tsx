@@ -61,7 +61,7 @@ export function Notifications({ upcoming }: { upcoming: UpcomingAppt[] }) {
       >
         <Bell className="size-5" />
         {count > 0 && (
-          <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
+          <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-foreground">
             {count}
           </span>
         )}

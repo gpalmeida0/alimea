@@ -134,7 +134,7 @@ function Sparkline({
   const x = (i: number) => pad + (i / (series.length - 1)) * (W - pad * 2);
   const y = (v: number) => pad + (1 - (v - min) / span) * (H - pad * 2);
   const line = series.map((s, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(s.value)}`).join(" ");
-  const stroke = positive ? "#2E7D32" : "#E07B00";
+  const stroke = positive ? "rgb(var(--brand))" : "rgb(var(--accent))";
 
   return (
     <>

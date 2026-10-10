@@ -11,7 +11,8 @@
     "admin": "tsx --tsconfig tsconfig.json scripts/admin.ts",
     "pdf:sample": "tsx --tsconfig tsconfig.json scripts/test-pdf.ts",
     "test": "tsx --tsconfig tsconfig.json --test tests/*.test.ts",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "test:coverage": "tsx --tsconfig tsconfig.json --test --experimental-test-coverage --test-coverage-include='src/lib/**' --test-coverage-exclude='src/lib/data/**' --test-coverage-exclude='src/lib/supabase/**' --test-coverage-exclude='src/lib/ai/**' --test-coverage-exclude='src/lib/files.ts' --test-coverage-exclude='src/lib/auth/session.ts' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=90 tests/*.test.ts",
+    "check": "npm run typecheck && npm run lint && npm run test:coverage"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",

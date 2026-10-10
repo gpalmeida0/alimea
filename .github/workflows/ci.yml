@@ -1,18 +1,23 @@
 name: CI
 
+# Every commit pushed to any branch, every pull request, and every merge into
+# main (a merge is a push to main).
 on:
   push:
-    branches: [main]
   pull_request:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  check:
+  test:
+    name: Typecheck, lint, tests (90% coverage)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +27,19 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm test
+      # Fails below 90% line, branch or function coverage (see package.json).
+      - run: npm run test:coverage
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       # No Supabase env here, so this builds against the in-memory backend.
       - run: npm run build

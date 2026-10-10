@@ -2,6 +2,7 @@ import { setRequestLocale } from "next-intl/server";
 import { redirect } from "@/i18n/routing";
 import { getAuthNid, getProfile, listAppointments, listClients } from "@/lib/data/repo";
 import { fileUrl } from "@/lib/files";
+import { themeCss } from "@/lib/theme";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 
@@ -35,6 +36,8 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen">
+      {/* This account's appearance. themeCss() only emits validated values. */}
+      <style dangerouslySetInnerHTML={{ __html: themeCss(profile.appearance) }} />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:shadow"
