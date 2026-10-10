@@ -1,98 +1,126 @@
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { ArrowLeft, FileText, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, FileText, Mail, Phone, TrendingUp } from "lucide-react";
 import {
   getClient,
+  listAppointments,
   listConsultations,
   listConsultationTypes,
   listPlans,
 } from "@/lib/data/repo";
 import { computeBmi } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/misc";
+import { Avatar, Badge, EmptyState } from "@/components/ui/misc";
 import { Link } from "@/i18n/routing";
 import { ConsultationButtons } from "@/components/consultation-buttons";
-import { ClientEditButton } from "@/components/client-edit";
+import { ClientActions } from "@/components/client-edit";
+import { ConsultationRowMenu } from "@/components/consultation-row-menu";
 import { ProgressDashboard, type ProgressPoint } from "@/components/progress-dashboard";
-import { ageFromBirth, formatDate } from "@/lib/utils";
+import { ageFromBirth, formatDate, formatNumber } from "@/lib/utils";
 
-export default async function ClientDetailPage({
-  params,
-}: {
-  params: Promise<{ locale: string; id: string }>;
-}) {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const client = await getClient((await params).id);
+  return { title: client?.name };
+}
+
+export default async function ClientDetailPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("client");
   const tc = await getTranslations("consultation");
   const tcl = await getTranslations("clients");
+  const tn = await getTranslations("nutrition");
 
   const client = await getClient(id);
   if (!client) notFound();
 
-  const [consults, plans, consultationTypes] = await Promise.all([
+  const [consults, plans, types, appts] = await Promise.all([
     listConsultations(id),
     listPlans(id),
     listConsultationTypes(),
+    listAppointments(),
   ]);
   const age = ageFromBirth(client.birthDate);
+  const typeName = new Map(types.map((ct) => [ct.id, ct.name]));
+  const now = Date.now();
+  const upcoming = appts.filter((a) => a.clientId === id && a.status === "scheduled" && new Date(a.date).getTime() >= now);
+  const standalonePlans = plans.filter((p) => !p.consultationId);
 
-  // progress series (oldest → newest)
-  const series = [...consults]
-    .reverse()
-    .map<ProgressPoint>((c) => ({
-      date: c.date,
-      weight: c.measurements.weightKg,
-      bmi: computeBmi(c.measurements),
-      bodyFat: c.measurements.bodyFatPct,
-      muscle: c.measurements.muscleMassKg,
-      waist: c.measurements.perimeters.waist,
-      arm: c.measurements.perimeters.arm,
-      hip: c.measurements.perimeters.hip,
-      thigh: c.measurements.perimeters.thigh,
-      calf: c.measurements.perimeters.calf,
-    }));
+  // Progress series (oldest → newest).
+  const series = [...consults].reverse().map<ProgressPoint>((c) => ({
+    date: c.date,
+    weight: c.measurements.weightKg,
+    bmi: computeBmi(c.measurements),
+    bodyFat: c.measurements.bodyFatPct,
+    muscle: c.measurements.muscleMassKg,
+    waist: c.measurements.perimeters.waist,
+    abdominal: c.measurements.perimeters.abdominal,
+    arm: c.measurements.perimeters.arm,
+    hip: c.measurements.perimeters.hip,
+    thigh: c.measurements.perimeters.thigh,
+    calf: c.measurements.perimeters.calf,
+  }));
+
+  const facts = [
+    age != null ? t("age", { age }) : null,
+    client.sex ? tn(client.sex) : null,
+    client.profession || null,
+  ].filter(Boolean);
+  const alerts = [
+    client.anamnesis?.allergies ? { label: tn("allergies"), value: client.anamnesis.allergies } : null,
+    client.anamnesis?.medication ? { label: tn("medication"), value: client.anamnesis.medication } : null,
+  ].filter((x): x is { label: string; value: string } => Boolean(x));
 
   return (
-    <div>
-      <Link
-        href="/clients"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
+    <div className="space-y-6">
+      <Link href="/clients" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> {tcl("title")}
       </Link>
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-4">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-brand-50 font-serif text-2xl font-semibold text-brand-600">
-            {client.name.charAt(0)}
-          </span>
+          <Avatar name={client.name} className="size-14 text-xl" />
           <div className="min-w-0">
-            <h1 className="break-words font-serif text-2xl font-semibold tracking-tight sm:text-3xl">{client.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              {client.email ?? ""} {age ? `· ${t("age", { age })}` : ""}
-            </p>
+            <h1 className="break-words font-serif text-3xl font-semibold tracking-tight">{client.name}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              {facts.length > 0 && <span>{facts.join(" · ")}</span>}
+              {client.phone && (
+                <a href={`tel:${client.phone.replace(/\s/g, "")}`} className="inline-flex items-center gap-1 hover:text-foreground">
+                  <Phone className="size-3.5" /> {client.phone}
+                </a>
+              )}
+              {client.email && (
+                <a href={`mailto:${client.email}`} className="inline-flex items-center gap-1 hover:text-foreground">
+                  <Mail className="size-3.5" /> {client.email}
+                </a>
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <ClientEditButton
-            clientId={id}
-            name={client.name}
-            email={client.email}
-            phone={client.phone}
-            goals={client.goals}
-            notes={client.notes}
-          />
-          <ConsultationButtons
-            clientId={id}
-            hasPrevious={consults.length > 0}
-            types={consultationTypes.map((ct) => ({ id: ct.id, name: ct.name, price: ct.price }))}
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          <ClientActions client={client} />
         </div>
       </div>
 
-      {/* Progress dashboard — weight, composition, perimeters */}
-      <div className="mb-6">
+      <ConsultationButtons
+        clientId={id}
+        hasPrevious={consults.length > 0}
+        types={types.map((ct) => ({ id: ct.id, name: ct.name, price: ct.price }))}
+        defaultTypeId={consults[0]?.consultationTypeId}
+      />
+
+      {alerts.length > 0 && (
+        <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-accent/25 bg-accent/5 px-4 py-3 text-sm">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-accent" />
+          {alerts.map((a) => (
+            <p key={a.label}>
+              <span className="font-medium">{a.label}:</span> <span className="text-muted-foreground">{a.value}</span>
+            </p>
+          ))}
+        </div>
+      )}
+
+      <section>
         <div className="mb-3 flex items-center gap-2">
           <TrendingUp className="size-5 text-brand" />
           <h2 className="font-serif text-xl font-semibold">{t("progress")}</h2>
@@ -100,92 +128,113 @@ export default async function ClientDetailPage({
         {series.length > 1 ? (
           <ProgressDashboard points={series} locale={locale} />
         ) : (
-          <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            {t("noConsultations")}
-          </p>
+          <EmptyState icon={<TrendingUp />} title={t("progressEmpty")} description={t("progressEmptyHint")} className="py-8" />
         )}
-      </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          {/* History */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("history")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {consults.length === 0 && (
-                <p className="text-sm text-muted-foreground">{t("noConsultations")}</p>
-              )}
-              {consults.map((c) => {
-                const bmi = computeBmi(c.measurements);
-                return (
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg">{t("history")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {consults.length === 0 && <EmptyState title={t("noConsultations")} description={t("noConsultationsHint")} className="py-8" />}
+            {consults.map((c) => {
+              const bmi = computeBmi(c.measurements);
+              const m = c.measurements;
+              return (
+                <div key={c.id} className="flex items-center gap-2 rounded-lg border border-border transition-colors hover:bg-muted/50">
                   <Link
-                    key={c.id}
                     href={c.planId ? `/clients/${id}/plans/${c.planId}` : `/clients/${id}`}
-                    className="flex items-center justify-between rounded-md border border-border px-4 py-3 transition-colors hover:bg-muted"
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3"
                   >
-                    <div>
-                      <p className="text-sm font-medium">{formatDate(c.date, locale)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {c.measurements.weightKg ? `${c.measurements.weightKg} kg` : "—"}
-                        {bmi ? ` · ${tc("bmiShort")} ${bmi}` : ""}
-                        {c.measurements.bodyFatPct ? ` · ${c.measurements.bodyFatPct}% ${tc("fatShort")}` : ""}
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted font-serif text-sm font-semibold">
+                      {c.consultationNumber ?? "·"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        {formatDate(c.date, locale)}
+                        {c.consultationTypeId && typeName.get(c.consultationTypeId) && (
+                          <span className="ml-2 font-normal text-muted-foreground">· {typeName.get(c.consultationTypeId)}</span>
+                        )}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {[
+                          m.weightKg != null ? `${formatNumber(m.weightKg, locale)} kg` : null,
+                          bmi ? `${tc("bmiShort")} ${formatNumber(bmi, locale)}` : null,
+                          m.bodyFatPct != null ? `${formatNumber(m.bodyFatPct, locale)}% ${tc("fatShort")}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || tc("noMeasurements")}
                       </p>
                     </div>
                     {c.planId && (
                       <Badge>
-                        <FileText className="mr-1 size-3" /> {t("plans")}
+                        <FileText className="size-3" /> {t("plan")}
                       </Badge>
                     )}
                   </Link>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
+                  <ConsultationRowMenu consultationId={c.id} clientId={id} />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
 
-        {/* Sidebar info */}
         <div className="space-y-6">
           <Card>
-            <CardHeader>
-              <CardTitle>{tcl("goals")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p className="text-foreground">{client.goals ?? "—"}</p>
-              <div className="border-t border-border pt-3">
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {tcl("notes")}
-                </p>
-                <p className="whitespace-pre-wrap text-foreground">{client.notes ?? "—"}</p>
-              </div>
-              <div className="border-t border-border pt-3 text-xs text-muted-foreground">
-                <p>{tcl("phone")}: {client.phone ?? "—"}</p>
-                <p>{t("since", { date: formatDate(client.createdAt, locale) })}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
             <CardHeader className="flex-row items-center justify-between">
-              <CardTitle>{t("plans")}</CardTitle>
+              <CardTitle className="text-lg">{t("nextAppointments")}</CardTitle>
+              <Link href={`/appointments?client=${id}`} className="text-sm text-brand-600 hover:underline">
+                {t("schedule")}
+              </Link>
             </CardHeader>
             <CardContent className="space-y-1.5">
-              {plans.length === 0 && (
-                <p className="text-sm text-muted-foreground">{t("noConsultations")}</p>
-              )}
-              {plans.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/clients/${id}/plans/${p.id}`}
-                  className="flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-muted"
-                >
-                  <span>{formatDate(p.updatedAt, locale)}</span>
-                  <Badge variant="muted">{p.language === "en" ? "EN" : "PT"}</Badge>
-                </Link>
+              {upcoming.length === 0 && <p className="text-sm text-muted-foreground">{t("noAppointments")}</p>}
+              {upcoming.slice(0, 3).map((a) => (
+                <p key={a.id} className="flex items-center gap-2 text-sm">
+                  <CalendarClock className="size-4 text-accent" />
+                  {formatDate(a.date, locale, { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </p>
               ))}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">{tcl("goals")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="whitespace-pre-wrap">{client.goals || "—"}</p>
+              <div className="border-t border-border pt-3">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">{tcl("notes")}</p>
+                <p className="whitespace-pre-wrap">{client.notes || "—"}</p>
+              </div>
+              <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+                {t("since", { date: formatDate(client.createdAt, locale) })}
+              </p>
+            </CardContent>
+          </Card>
+
+          {standalonePlans.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">{t("otherPlans")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {standalonePlans.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/clients/${id}/plans/${p.id}`}
+                    className="flex items-center justify-between rounded-md px-2 py-2 text-sm hover:bg-muted"
+                  >
+                    <span>{formatDate(p.updatedAt, locale)}</span>
+                    <Badge variant="muted">{p.language === "en" ? "EN" : "PT"}</Badge>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

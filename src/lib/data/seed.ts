@@ -9,6 +9,17 @@ import type {
   Recommendation,
 } from "@/lib/types";
 
+// The demo data is anchored to "now" so the dashboard, calendar and reminder
+// window always look alive, whatever day the app is started.
+const DAY = 24 * 60 * 60 * 1000;
+const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString().slice(0, 10);
+/** ISO instant for (today + n days) at hh:mm local server time. */
+const at = (n: number, hh: number, mm = 0) => {
+  const d = new Date(Date.now() + n * DAY);
+  d.setHours(hh, mm, 0, 0);
+  return d.toISOString();
+};
+
 // Default nutritionist (mirrors the supplied template branding).
 export const seedProfile: NutritionistProfile = {
   id: "nutri-1",
@@ -30,6 +41,8 @@ export const seedClients: Client[] = [
     email: "goncalo@example.com",
     phone: "911920299", // normalised to +351911920299 when texting
     birthDate: "1992-03-14",
+    sex: "male",
+    ethnicity: "white",
     goals: "Recomposição corporal e melhoria de hábitos alimentares.",
     notes: "Treina 3x/semana. Sem alergias conhecidas.",
     createdAt: "2025-02-10T10:00:00Z",
@@ -40,6 +53,7 @@ export const seedClients: Client[] = [
     name: "Miguel Santos",
     email: "miguel.santos@example.com",
     birthDate: "1988-07-02",
+    sex: "male",
     goals: "Perda de massa gorda.",
     notes: "Intolerância à lactose.",
     createdAt: "2025-03-01T10:00:00Z",
@@ -50,6 +64,7 @@ export const seedClients: Client[] = [
     name: "Sofia Almeida",
     email: "sofia.almeida@example.com",
     birthDate: "1995-11-20",
+    sex: "female",
     goals: "Aumento de massa muscular.",
     createdAt: "2025-04-12T10:00:00Z",
   },
@@ -59,52 +74,56 @@ export const seedConsultations: Consultation[] = [
   {
     id: "consult-1a",
     clientId: "client-1",
-    date: "2025-05-01",
+    date: daysAgo(63),
+    consultationNumber: 1,
     measurements: {
-      weightKg: 55.4,
-      heightM: 1.64,
-      bodyFatPct: 23.0,
-      muscleMassKg: 38.9,
-      perimeters: { waist: 85.0, arm: 28.0, hip: 96.0, thigh: 56.0, calf: 36.0 },
+      weightKg: 78.6,
+      heightCm: 178,
+      bodyFatPct: 21.4,
+      muscleMassKg: 34.1,
+      perimeters: { waist: 89.0, abdominal: 92.5, arm: 31.0, hip: 101.0, thigh: 57.5, calf: 37.5 },
       skinfolds: {
-        tricipital: 19,
-        subscapular: 21,
-        bicipital: 36,
-        iliocristal: 41,
-        supraspinal: 82,
-        abdominal: 92,
-        geminal: 102,
-        crural: 28,
+        tricipital: 14,
+        subscapular: 18,
+        bicipital: 7,
+        iliocristal: 22,
+        supraspinal: 16,
+        abdominal: 26,
+        geminal: 10,
+        crural: 18,
+        peitoral: 12,
       },
     },
     notes: "Boa adesão. Aumentar ingestão proteica ao pequeno-almoço.",
     planId: "plan-1a",
-    createdAt: "2025-05-01T11:00:00Z",
+    createdAt: `${daysAgo(63)}T11:00:00Z`,
   },
   {
     id: "consult-1b",
     clientId: "client-1",
-    date: "2025-05-02",
+    date: daysAgo(28),
+    consultationNumber: 2,
     measurements: {
-      weightKg: 54.0,
-      heightM: 1.64,
-      bodyFatPct: 22.1,
-      muscleMassKg: 39.5,
-      perimeters: { waist: 84.3, arm: 84.3, hip: 84.3, thigh: 84.3, calf: 84.3 },
+      weightKg: 76.9,
+      heightCm: 178,
+      bodyFatPct: 19.8,
+      muscleMassKg: 34.6,
+      perimeters: { waist: 86.5, abdominal: 89.0, arm: 31.5, hip: 99.5, thigh: 57.0, calf: 37.5 },
       skinfolds: {
-        tricipital: 18,
-        subscapular: 20,
-        bicipital: 35,
-        iliocristal: 40,
-        supraspinal: 80,
-        abdominal: 90,
-        geminal: 100,
-        crural: 27,
+        tricipital: 12,
+        subscapular: 16,
+        bicipital: 6,
+        iliocristal: 19,
+        supraspinal: 14,
+        abdominal: 22,
+        geminal: 9,
+        crural: 16,
+        peitoral: 10,
       },
     },
     notes: "Evolução positiva no peso e massa muscular. Manter plano com ajustes.",
     planId: "plan-1b",
-    createdAt: "2025-05-02T11:00:00Z",
+    createdAt: `${daysAgo(28)}T11:00:00Z`,
   },
 ];
 
@@ -170,8 +189,8 @@ export const seedPlans: MealPlan[] = [
       "12h de jejum noturno no mínimo.\np.ex. acabar de jantar às 20h00 e só tomar o pequeno-almoço às 08h00 da manhã.\n\n1 porção de fruta corresponde a 140g (3 ameixas / 2 fatias de ananás / cerejas / 2 kiwis / 1 laranja ou maçã média / 2 tangerinas).",
     motivationalQuote: "A persistência é o caminho do êxito",
     nextAppointment: "20 de maio às 14h00",
-    createdAt: "2025-05-01T11:30:00Z",
-    updatedAt: "2025-05-01T11:30:00Z",
+    createdAt: `${daysAgo(63)}T11:30:00Z`,
+    updatedAt: `${daysAgo(63)}T11:30:00Z`,
   },
   {
     id: "plan-1b",
@@ -184,9 +203,9 @@ export const seedPlans: MealPlan[] = [
     notes:
       "12h de jejum noturno no mínimo.\np.ex. acabar de jantar às 20h00 e só tomar o pequeno-almoço às 08h00 da manhã.",
     motivationalQuote: "A persistência é o caminho do êxito",
-    nextAppointment: "20 de maio às 14h00",
-    createdAt: "2025-05-02T11:30:00Z",
-    updatedAt: "2025-05-02T11:30:00Z",
+    nextAppointment: "",
+    createdAt: `${daysAgo(28)}T11:30:00Z`,
+    updatedAt: `${daysAgo(28)}T11:30:00Z`,
   },
 ];
 
@@ -291,13 +310,13 @@ export const seedTemplates: PlanTemplate[] = [
   },
 ];
 
-// Dates sit around "today" (mid-June 2026) so the calendar and the 24h reminder
-// window demo realistically. The 2026-06-15 appointment is due for a reminder.
+// Appointments around today: one tomorrow (due for its SMS reminder), one in
+// ~25 minutes (live notification), a few later ones and a completed one.
 export const seedAppointments: Appointment[] = [
   {
     id: "appt-1",
     clientId: "client-1",
-    date: "2026-06-15T14:00:00",
+    date: at(1, 14),
     durationMin: 45,
     note: "Reavaliação",
     status: "scheduled",
@@ -307,7 +326,7 @@ export const seedAppointments: Appointment[] = [
   {
     id: "appt-2",
     clientId: "client-2",
-    date: "2026-06-18T10:30:00",
+    date: at(3, 10, 30),
     durationMin: 30,
     note: "Consulta de seguimento",
     status: "scheduled",
@@ -317,7 +336,7 @@ export const seedAppointments: Appointment[] = [
   {
     id: "appt-3",
     clientId: "client-3",
-    date: "2026-06-23T17:00:00",
+    date: at(8, 17),
     durationMin: 45,
     note: "Primeira consulta",
     status: "scheduled",
@@ -325,7 +344,6 @@ export const seedAppointments: Appointment[] = [
     reminderChannel: "sms",
   },
   {
-    // Imminent appointment (~25 min from now) to showcase live notifications.
     id: "appt-5",
     clientId: "client-1",
     date: new Date(Date.now() + 25 * 60 * 1000).toISOString(),
@@ -338,12 +356,12 @@ export const seedAppointments: Appointment[] = [
   {
     id: "appt-4",
     clientId: "client-1",
-    date: "2026-06-09T11:00:00",
+    date: at(-28, 11),
     durationMin: 45,
     note: "Consulta realizada",
     status: "completed",
     reminderEnabled: true,
     reminderChannel: "sms",
-    reminderSentAt: "2026-06-08T09:00:00",
+    reminderSentAt: at(-29, 9),
   },
 ];

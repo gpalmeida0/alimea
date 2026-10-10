@@ -5,9 +5,9 @@
 @layer base {
   :root {
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 17%;
-    --border: 140 12% 88%;
-    --input: 140 12% 88%;
+    --card-foreground: 150 15% 14%;
+    --border: 90 12% 87%;
+    --input: 90 10% 84%;
     --ring: 122 45% 34%;
   }
 
@@ -17,25 +17,69 @@
 
   html {
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   body {
     @apply bg-background text-foreground font-sans;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
+  }
+
+  /* Cormorant's default old-style figures make "1" read as "I" in numbers. */
+  .font-serif {
+    font-variant-numeric: lining-nums;
+  }
+
+  ::selection {
+    @apply bg-brand-100 text-brand-700;
+  }
+
+  /* Hide number spinners: numeric fields are typed, not clicked. */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235C6862' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    appearance: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
   .card-surface {
-    @apply rounded-lg border bg-card shadow-sm;
+    @apply rounded-xl border bg-card shadow-[0_1px_2px_rgba(16,24,20,0.04)];
   }
 
-  /* Thin elegant scrollbar */
   .scroll-thin::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   .scroll-thin::-webkit-scrollbar-thumb {
-    @apply bg-muted rounded-full;
+    @apply rounded-full bg-muted;
+  }
+}
+
+@media print {
+  aside,
+  header,
+  .no-print {
+    display: none !important;
   }
 }

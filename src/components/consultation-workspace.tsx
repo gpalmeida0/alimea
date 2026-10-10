@@ -1,42 +1,48 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import {
-  ClipboardList,
-  Ruler,
+  AlertCircle,
   Calculator,
-  Flame,
-  PieChart,
-  Utensils,
-  Save,
   Check,
+  ClipboardList,
+  Cloud,
+  Flame,
   Loader2,
+  PieChart,
+  Plus,
+  Ruler,
+  Save,
+  Utensils,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Textarea, Label } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { PlanEditor } from "@/components/plan-editor";
-import { saveConsultationAction } from "@/app/actions";
-import { macros as macroSplit } from "@/lib/nutrition/calc";
+import { Field, Input, Label, NumberInput, Select, Textarea } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/misc";
+import { PlanEditor, type PlanDraft, type PlanEditorContext } from "@/components/plan-editor";
+import { saveWorkspaceAction } from "@/app/actions";
+import { useAutosave, type SaveState } from "@/hooks/use-autosave";
+import { bmiClass, GOAL_ADJUSTMENT, macros as macroSplit, type Goal, type MacroBreakdown } from "@/lib/nutrition/calc";
+import { bodyFatPercent, muscleMassKg, type FormulaResult } from "@/lib/nutrition/body-composition";
 import {
-  bodyFatPercent,
-  muscleMassKg,
-  type BodyCompInput,
-  type FormulaResult,
-} from "@/lib/nutrition/body-composition";
-import {
+  DEFAULT_PAL,
+  FFM_FORMULAS,
   GEB_FORMULAS,
+  PAL_OPTIONS,
   geb as computeGeb,
   get as computeGet,
-  PAL_OPTIONS,
-  DEFAULT_PAL,
+  isApplicable,
   suggestGebFormula,
 } from "@/lib/nutrition/energy";
 import {
+  computeBmi,
   DEFAULT_MACRO_CONFIG,
+  heightCmOf,
+  sumPerimeters,
+  sumSkinfolds,
   type Anamnesis,
   type Consultation,
   type EnergyConfig,
@@ -47,68 +53,82 @@ import {
   type Measurements,
   type Sex,
 } from "@/lib/types";
+import { ageFromBirth, cn, formatDate, formatNumber, newId } from "@/lib/utils";
 
 type Tab = "anamnese" | "antropometria" | "resultados" | "necessidades" | "macros" | "plano";
+type T = ReturnType<typeof useTranslations>;
 
-const uid = () =>
-  typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+interface ClientState {
+  birthDate?: string;
+  sex?: Sex;
+  ethnicity?: Ethnicity;
+  profession?: string;
+  anamnesis: Anamnesis;
+}
 
-const r1 = (v: number) => Math.round(v * 10) / 10;
+interface ConsultState {
+  date: string;
+  notes: string;
+  measurements: Measurements;
+  foodHistory: FoodHistory;
+  energy: EnergyConfig;
+  macros: MacroConfig;
+}
 
 interface Props {
   clientId: string;
-  age?: number;
-  initialClient: { sex?: Sex; ethnicity?: Ethnicity; profession?: string; anamnesis?: Anamnesis };
+  initialClient: ClientState;
   consultation: Consultation;
-  planEditorProps: Omit<React.ComponentProps<typeof PlanEditor>, "hideConsultation" | "targetOverride">;
+  previous?: Consultation;
+  initialPlan: PlanDraft;
+  planCtx: PlanEditorContext;
 }
 
-const DEFAULT_MEAL_NAMES = ["Pequeno-almoço", "Merenda da manhã", "Almoço", "Merenda da tarde", "Jantar"];
+const r1 = (v: number) => Math.round(v * 10) / 10;
 
-export function ConsultationWorkspace({ clientId, age, initialClient, consultation, planEditorProps }: Props) {
+export function ConsultationWorkspace({ clientId, initialClient, consultation, previous, initialPlan, planCtx }: Props) {
   const t = useTranslations("nutrition");
   const tc = useTranslations("common");
   const locale = useLocale();
-  const router = useRouter();
-
   const [tab, setTab] = useState<Tab>("anamnese");
-  const [pending, start] = useTransition();
-  const [saved, setSaved] = useState(false);
 
-  // Client-level (anamnese) state
-  const [sex, setSex] = useState<Sex | undefined>(initialClient.sex);
-  const [ethnicity, setEthnicity] = useState<Ethnicity | undefined>(initialClient.ethnicity);
-  const [profession, setProfession] = useState(initialClient.profession ?? "");
-  const [anamnesis, setAnamnesis] = useState<Anamnesis>(initialClient.anamnesis ?? {});
+  const [client, setClient] = useState<ClientState>(initialClient);
+  const [consult, setConsult] = useState<ConsultState>({
+    date: consultation.date,
+    notes: consultation.notes ?? "",
+    measurements: consultation.measurements,
+    foodHistory: consultation.foodHistory ?? {},
+    energy: consultation.energy ?? {},
+    macros: consultation.macros ?? DEFAULT_MACRO_CONFIG,
+  });
+  const [plan, setPlan] = useState<PlanDraft>(initialPlan);
 
-  // Consultation-level state
-  const [meas, setMeas] = useState<Measurements>(
-    consultation.measurements ?? { perimeters: {}, skinfolds: {} },
-  );
-  const [foodHistory, setFoodHistory] = useState<FoodHistory>(consultation.foodHistory ?? {});
-  const [energy, setEnergy] = useState<EnergyConfig>(consultation.energy ?? {});
-  const [macroCfg, setMacroCfg] = useState<MacroConfig>(consultation.macros ?? DEFAULT_MACRO_CONFIG);
+  const patchConsult = useCallback((p: Partial<ConsultState>) => setConsult((c) => ({ ...c, ...p })), []);
+  const setMeas = useCallback((fn: (m: Measurements) => Measurements) => setConsult((c) => ({ ...c, measurements: fn(c.measurements) })), []);
 
-  const consultNumber = consultation.consultationNumber ?? 1;
-  const isFirst = consultNumber <= 1;
+  // --- persistence ------------------------------------------------------------
+  const snapshot = useMemo(() => ({ client, consult, plan }), [client, consult, plan]);
+  const { state, savedAt, saveNow } = useAutosave(snapshot, async (s) => {
+    await saveWorkspaceAction(locale, {
+      clientId,
+      client: s.client,
+      consultationId: consultation.id,
+      consultation: s.consult,
+      planId: planCtx.planId,
+      plan: s.plan,
+    });
+  });
 
-  // --- derived antropometria ---
-  const heightCm = meas.heightCm ?? (meas.heightM ? meas.heightM * 100 : undefined);
-  const bmi =
-    meas.weightKg && heightCm ? r1(meas.weightKg / Math.pow(heightCm / 100, 2)) : undefined;
-  const sumPerimeters = useMemo(() => {
-    const v = Object.values(meas.perimeters).filter((x): x is number => typeof x === "number");
-    return v.length ? r1(v.reduce((a, b) => a + b, 0)) : undefined;
-  }, [meas.perimeters]);
-  const sumSkinfolds = useMemo(() => {
-    const v = Object.values(meas.skinfolds).filter((x): x is number => typeof x === "number");
-    return v.length ? r1(v.reduce((a, b) => a + b, 0)) : undefined;
-  }, [meas.skinfolds]);
+  // --- derived: anthropometry ---------------------------------------------------
+  const meas = consult.measurements;
+  const age = ageFromBirth(client.birthDate, consult.date);
+  const heightCm = heightCmOf(meas);
+  const bmi = computeBmi(meas);
 
-  // --- derived resultados ---
-  const bodyCompInput: BodyCompInput = {
-    sex,
-    ethnicity,
+  // --- derived: body composition -------------------------------------------------
+  const bodyInput = {
+    sex: client.sex,
+    ethnicity: client.ethnicity,
     ageYears: age,
     weightKg: meas.weightKg,
     heightCm,
@@ -116,152 +136,117 @@ export function ConsultationWorkspace({ clientId, age, initialClient, consultati
     skinfolds: meas.skinfolds,
     perimeters: meas.perimeters,
   };
-  const fat = bodyFatPercent(bodyCompInput, { athlete: anamnesis.isAthlete });
-  const muscle = muscleMassKg(bodyCompInput);
+  const fat = bodyFatPercent(bodyInput, { athlete: client.anamnesis.isAthlete });
+  const muscle = muscleMassKg(bodyInput);
 
-  // --- derived necessidades ---
-  const gebFormulaKey = energy.gebFormula ?? suggestGebFormula({ sex, ageYears: age });
-  const energyInput = {
-    sex,
-    weightKg: meas.weightKg,
-    heightCm,
-    ageYears: age,
-    fatFreeMassKg:
-      meas.weightKg && meas.bodyFatPct ? meas.weightKg * (1 - meas.bodyFatPct / 100) : meas.leanMassKg,
-  };
-  const gebValue = computeGeb(gebFormulaKey, energyInput);
-  const pal = energy.pal ?? DEFAULT_PAL;
-  const getValue = computeGet(gebValue, pal, energy.stressFactor ?? 1);
-  const targetKcal = energy.targetKcal ?? getValue;
+  // --- derived: energy -------------------------------------------------------------
+  const fatPct = meas.bodyFatPct ?? fat.average;
+  const ffm =
+    meas.leanMassKg ?? (meas.weightKg && fatPct != null ? r1(meas.weightKg * (1 - fatPct / 100)) : undefined);
+  const energyInput = { sex: client.sex, weightKg: meas.weightKg, heightCm, ageYears: age, fatFreeMassKg: ffm };
+  const suggestedKey = suggestGebFormula({ sex: client.sex, ageYears: age, athlete: client.anamnesis.isAthlete });
+  const gebKey = consult.energy.gebFormula ?? suggestedKey;
+  const gebValue = computeGeb(gebKey, energyInput);
+  const pal = consult.energy.pal ?? DEFAULT_PAL;
+  const getValue = computeGet(gebValue, pal, consult.energy.stressFactor ?? 1);
+  const targetKcal = consult.energy.targetKcal ?? getValue;
 
-  // --- derived macros ---
-  const macroResult = targetKcal
-    ? macroSplit(targetKcal, macroCfg, meas.weightKg)
-    : undefined;
-  const pctSum = macroCfg.proteinPct + macroCfg.carbsPct + macroCfg.fatPct;
-  const targetOverride = targetKcal && macroResult
-    ? {
-        kcal: targetKcal,
-        protein: macroResult.protein.grams,
-        carbs: macroResult.carbs.grams,
-        fat: macroResult.fat.grams,
-      }
-    : undefined;
+  // --- derived: macros -------------------------------------------------------------
+  const macroResult = targetKcal ? macroSplit(targetKcal, consult.macros, meas.weightKg) : undefined;
+  const target =
+    targetKcal && macroResult
+      ? { kcal: targetKcal, protein: macroResult.protein.grams, carbs: macroResult.carbs.grams, fat: macroResult.fat.grams }
+      : undefined;
 
-  function save() {
-    setSaved(false);
-    start(async () => {
-      await saveConsultationAction(locale, {
-        clientId,
-        client: { sex, ethnicity, profession: profession || undefined, anamnesis },
-        consultationId: consultation.id,
-        consultation: {
-          measurements: { ...meas, heightCm, heightM: heightCm ? heightCm / 100 : meas.heightM },
-          foodHistory,
-          energy: { ...energy, gebFormula: gebFormulaKey, pal, targetKcal },
-          macros: macroCfg,
-        },
-      });
-      setSaved(true);
-      router.refresh();
-      setTimeout(() => setSaved(false), 2000);
-    });
-  }
-
-  const tabs: { key: Tab; label: string; icon: typeof ClipboardList }[] = [
-    { key: "anamnese", label: t("tabs.anamnese"), icon: ClipboardList },
-    { key: "antropometria", label: t("tabs.antropometria"), icon: Ruler },
-    { key: "resultados", label: t("tabs.resultados"), icon: Calculator },
-    { key: "necessidades", label: t("tabs.necessidades"), icon: Flame },
-    { key: "macros", label: t("tabs.macros"), icon: PieChart },
-    { key: "plano", label: t("tabs.plano"), icon: Utensils },
+  const tabs: { value: Tab; label: string; icon: React.ReactNode }[] = [
+    { value: "anamnese", label: t("tabs.anamnese"), icon: <ClipboardList /> },
+    { value: "antropometria", label: t("tabs.antropometria"), icon: <Ruler /> },
+    { value: "resultados", label: t("tabs.resultados"), icon: <Calculator /> },
+    { value: "necessidades", label: t("tabs.necessidades"), icon: <Flame /> },
+    { value: "macros", label: t("tabs.macros"), icon: <PieChart /> },
+    { value: "plano", label: t("tabs.plano"), icon: <Utensils /> },
   ];
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex flex-wrap gap-0.5 rounded-md border border-border bg-card p-0.5">
-          {tabs.map((tb) => {
-            const Icon = tb.icon;
-            return (
-              <button
-                key={tb.key}
-                onClick={() => setTab(tb.key)}
-                className={cn(
-                  "flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium transition-colors",
-                  tab === tb.key ? "bg-brand text-white" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="size-4" /> {tb.label}
-              </button>
-            );
-          })}
-        </div>
-        {tab !== "plano" && (
-          <Button onClick={save} disabled={pending}>
-            {saved ? <Check /> : pending ? <Loader2 className="animate-spin" /> : <Save />}
-            {saved ? tc("saved") : t("save")}
+      <div className="sticky top-16 z-20 -mx-4 mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background/90 px-4 py-3 backdrop-blur md:-mx-8 md:px-8">
+        <Segmented value={tab} onChange={setTab} items={tabs} />
+        <div className="flex items-center gap-3">
+          <SaveIndicator state={state} savedAt={savedAt} locale={locale} />
+          <Button onClick={() => void saveNow()} loading={state === "saving"} variant={state === "dirty" || state === "error" ? "default" : "outline"} size="sm">
+            {state === "saved" ? <Check /> : <Save />} {state === "saved" ? tc("saved") : tc("save")}
           </Button>
-        )}
+        </div>
       </div>
 
       {tab === "anamnese" && (
         <AnamneseTab
           t={t}
-          sex={sex}
-          setSex={setSex}
-          ethnicity={ethnicity}
-          setEthnicity={setEthnicity}
-          profession={profession}
-          setProfession={setProfession}
-          anamnesis={anamnesis}
-          setAnamnesis={setAnamnesis}
-          foodHistory={foodHistory}
-          setFoodHistory={setFoodHistory}
-          isFirst={isFirst}
+          client={client}
+          setClient={setClient}
+          consult={consult}
+          patchConsult={patchConsult}
+          isFirst={(consultation.consultationNumber ?? 1) <= 1}
+          age={age}
         />
       )}
       {tab === "antropometria" && (
-        <AntropometriaTab
-          t={t}
-          meas={meas}
-          setMeas={setMeas}
-          heightCm={heightCm}
-          bmi={bmi}
-          sumPerimeters={sumPerimeters}
-          sumSkinfolds={sumSkinfolds}
-          consultNumber={consultNumber}
-        />
+        <AntropometriaTab t={t} meas={meas} setMeas={setMeas} previous={previous} locale={locale} consultNumber={consultation.consultationNumber ?? 1} />
       )}
       {tab === "resultados" && (
-        <ResultadosTab t={t} fat={fat} muscle={muscle} athlete={!!anamnesis.isAthlete} ready={!!(sex && meas.weightKg)} />
+        <ResultadosTab
+          t={t}
+          locale={locale}
+          fat={fat}
+          muscle={muscle}
+          meas={meas}
+          sex={client.sex}
+          bmi={bmi}
+          athlete={!!client.anamnesis.isAthlete}
+          missing={[!client.sex && t("sex"), age == null && t("birthDate"), !meas.weightKg && t("weightKg"), !heightCm && t("heightCm")].filter(Boolean) as string[]}
+          onApply={(p) => setMeas((m) => ({ ...m, ...p }))}
+        />
       )}
       {tab === "necessidades" && (
         <NecessidadesTab
           t={t}
-          gebFormulaKey={gebFormulaKey}
-          suggestedKey={suggestGebFormula({ sex, ageYears: age })}
-          energy={energy}
-          setEnergy={setEnergy}
+          locale={locale}
+          energy={consult.energy}
+          setEnergy={(energy) => patchConsult({ energy })}
+          gebKey={gebKey}
+          suggestedKey={suggestedKey}
+          input={energyInput}
           gebValue={gebValue}
           getValue={getValue}
           pal={pal}
+          targetKcal={targetKcal}
         />
       )}
       {tab === "macros" && (
-        <MacrosTab
-          t={t}
-          macroCfg={macroCfg}
-          setMacroCfg={setMacroCfg}
-          targetKcal={targetKcal}
-          macroResult={macroResult}
-          pctSum={pctSum}
-        />
+        <MacrosTab t={t} cfg={consult.macros} setCfg={(macros) => patchConsult({ macros })} targetKcal={targetKcal} result={macroResult} weightKg={meas.weightKg} />
       )}
       {tab === "plano" && (
-        <PlanEditor {...planEditorProps} hideConsultation targetOverride={targetOverride} />
+        <PlanEditor draft={plan} update={(fn) => setPlan(fn)} ctx={planCtx} target={target} ensureSaved={saveNow} />
       )}
     </div>
+  );
+}
+
+function SaveIndicator({ state, savedAt, locale }: { state: SaveState; savedAt: Date | null; locale: string }) {
+  const t = useTranslations("common");
+  const content = {
+    saving: [<Loader2 key="i" className="size-3.5 animate-spin" />, t("saving")],
+    dirty: [<Cloud key="i" className="size-3.5" />, t("unsaved")],
+    error: [<AlertCircle key="i" className="size-3.5 text-destructive" />, t("saveFailed")],
+    saved: [
+      <Check key="i" className="size-3.5 text-brand" />,
+      savedAt ? t("savedAt", { time: savedAt.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) }) : t("allSaved"),
+    ],
+  }[state];
+  return (
+    <span aria-live="polite" className={cn("hidden items-center gap-1.5 text-xs sm:flex", state === "error" ? "text-destructive" : "text-muted-foreground")}>
+      {content}
+    </span>
   );
 }
 
@@ -270,92 +255,101 @@ export function ConsultationWorkspace({ clientId, age, initialClient, consultati
 // ---------------------------------------------------------------------------
 function AnamneseTab({
   t,
-  sex,
-  setSex,
-  ethnicity,
-  setEthnicity,
-  profession,
-  setProfession,
-  anamnesis,
-  setAnamnesis,
-  foodHistory,
-  setFoodHistory,
+  client,
+  setClient,
+  consult,
+  patchConsult,
   isFirst,
+  age,
 }: {
-  t: (k: string, v?: Record<string, string | number>) => string;
-  sex?: Sex;
-  setSex: (s: Sex) => void;
-  ethnicity?: Ethnicity;
-  setEthnicity: (e: Ethnicity) => void;
-  profession: string;
-  setProfession: (s: string) => void;
-  anamnesis: Anamnesis;
-  setAnamnesis: (a: Anamnesis) => void;
-  foodHistory: FoodHistory;
-  setFoodHistory: (f: FoodHistory) => void;
+  t: T;
+  client: ClientState;
+  setClient: React.Dispatch<React.SetStateAction<ClientState>>;
+  consult: ConsultState;
+  patchConsult: (p: Partial<ConsultState>) => void;
   isFirst: boolean;
+  age?: number;
 }) {
-  const patch = (p: Partial<Anamnesis>) => setAnamnesis({ ...anamnesis, ...p });
-  const fhMeals = foodHistory.meals ?? [];
-  const addMeal = () =>
-    setFoodHistory({
-      ...foodHistory,
-      meals: [...fhMeals, { id: uid(), name: DEFAULT_MEAL_NAMES[fhMeals.length] ?? "" }],
-    });
-  const patchMeal = (id: string, p: Partial<FoodHistoryMeal>) =>
-    setFoodHistory({ ...foodHistory, meals: fhMeals.map((m) => (m.id === id ? { ...m, ...p } : m)) });
-  const removeMeal = (id: string) =>
-    setFoodHistory({ ...foodHistory, meals: fhMeals.filter((m) => m.id !== id) });
+  const a = client.anamnesis;
+  const patchA = (p: Partial<Anamnesis>) => setClient((c) => ({ ...c, anamnesis: { ...c.anamnesis, ...p } }));
+  const fh = consult.foodHistory;
+  const setFh = (p: Partial<FoodHistory>) => patchConsult({ foodHistory: { ...fh, ...p } });
+  const fhMeals = fh.meals ?? [];
+  const defaultNames = t.raw("defaultMeals") as string[];
+  const patchFhMeal = (id: string, p: Partial<FoodHistoryMeal>) =>
+    setFh({ meals: fhMeals.map((m) => (m.id === id ? { ...m, ...p } : m)) });
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t("personalData")}</CardTitle>
+          <CardTitle className="text-lg">{t("personalData")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>{t("sex")}</Label>
-              <select value={sex ?? ""} onChange={(e) => setSex(e.target.value as Sex)} className={selectCls}>
+            <Field label={t("consultationDate")} htmlFor="c-date">
+              <Input id="c-date" type="date" value={consult.date} onChange={(e) => e.target.value && patchConsult({ date: e.target.value })} />
+            </Field>
+            <Field label={t("birthDate")} htmlFor="c-birth" hint={age != null ? t("ageYears", { age }) : t("ageNeeded")}>
+              <Input
+                id="c-birth"
+                type="date"
+                value={client.birthDate ?? ""}
+                max={consult.date}
+                onChange={(e) => setClient((c) => ({ ...c, birthDate: e.target.value || undefined }))}
+              />
+            </Field>
+            <Field label={t("sex")} htmlFor="c-sex">
+              <Select id="c-sex" value={client.sex ?? ""} onChange={(e) => setClient((c) => ({ ...c, sex: (e.target.value || undefined) as Sex }))}>
                 <option value="">—</option>
                 <option value="female">{t("female")}</option>
                 <option value="male">{t("male")}</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("ethnicity")}</Label>
-              <select value={ethnicity ?? ""} onChange={(e) => setEthnicity(e.target.value as Ethnicity)} className={selectCls}>
+              </Select>
+            </Field>
+            <Field label={t("ethnicity")} htmlFor="c-eth">
+              <Select
+                id="c-eth"
+                value={client.ethnicity ?? ""}
+                onChange={(e) => setClient((c) => ({ ...c, ethnicity: (e.target.value || undefined) as Ethnicity }))}
+              >
                 <option value="">—</option>
                 <option value="white">{t("ethnicities.white")}</option>
                 <option value="black">{t("ethnicities.black")}</option>
                 <option value="other">{t("ethnicities.other")}</option>
-              </select>
-            </div>
+              </Select>
+            </Field>
           </div>
-          <TextField label={t("profession")} value={profession} onChange={setProfession} />
-          <TextArea label={t("reason")} value={anamnesis.reason ?? ""} onChange={(v) => patch({ reason: v })} />
-          <div className="grid grid-cols-[auto_1fr] items-center gap-3">
+          <Field label={t("profession")} htmlFor="c-prof">
+            <Input id="c-prof" value={client.profession ?? ""} onChange={(e) => setClient((c) => ({ ...c, profession: e.target.value }))} />
+          </Field>
+          <TextArea label={t("reason")} value={a.reason ?? ""} onChange={(v) => patchA({ reason: v })} />
+          <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={!!anamnesis.previousFollowUp}
-                onChange={(e) => patch({ previousFollowUp: e.target.checked })}
+                className="size-4 accent-brand"
+                checked={!!a.previousFollowUp}
+                onChange={(e) => patchA({ previousFollowUp: e.target.checked })}
               />
               {t("previousFollowUp")}
             </label>
-            <Input
-              value={anamnesis.previousFollowUpDetail ?? ""}
-              onChange={(e) => patch({ previousFollowUpDetail: e.target.value })}
-              placeholder={t("detail")}
-              className="h-9"
-            />
+            {a.previousFollowUp && (
+              <Input
+                value={a.previousFollowUpDetail ?? ""}
+                onChange={(e) => patchA({ previousFollowUpDetail: e.target.value })}
+                placeholder={t("detail")}
+              />
+            )}
           </div>
-          <TextField label={t("allergies")} value={anamnesis.allergies ?? ""} onChange={(v) => patch({ allergies: v })} />
+          <Field label={t("allergies")} htmlFor="c-allergies">
+            <Input id="c-allergies" value={a.allergies ?? ""} onChange={(e) => patchA({ allergies: e.target.value })} />
+          </Field>
           <div className="grid grid-cols-[1fr_auto] items-end gap-3">
-            <TextField label={t("sport")} value={anamnesis.sport ?? ""} onChange={(v) => patch({ sport: v })} />
+            <Field label={t("sport")} htmlFor="c-sport">
+              <Input id="c-sport" value={a.sport ?? ""} onChange={(e) => patchA({ sport: e.target.value })} />
+            </Field>
             <label className="flex h-9 items-center gap-2 text-sm">
-              <input type="checkbox" checked={!!anamnesis.isAthlete} onChange={(e) => patch({ isAthlete: e.target.checked })} />
+              <input type="checkbox" className="size-4 accent-brand" checked={!!a.isAthlete} onChange={(e) => patchA({ isAthlete: e.target.checked })} />
               {t("isAthlete")}
             </label>
           </div>
@@ -364,53 +358,61 @@ function AnamneseTab({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t("observations")}</CardTitle>
+          <CardTitle className="text-lg">{t("observations")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <TextArea label={t("dislikedFoods")} value={anamnesis.dislikedFoods ?? ""} onChange={(v) => patch({ dislikedFoods: v })} />
-          <TextArea label={t("bowelFunction")} value={anamnesis.bowelFunction ?? ""} onChange={(v) => patch({ bowelFunction: v })} />
-          <TextArea label={t("menstrualCycle")} value={anamnesis.menstrualCycle ?? ""} onChange={(v) => patch({ menstrualCycle: v })} />
-          <TextArea label={t("medication")} value={anamnesis.medication ?? ""} onChange={(v) => patch({ medication: v })} />
-          <TextArea label={t("sleepQuality")} value={anamnesis.sleepQuality ?? ""} onChange={(v) => patch({ sleepQuality: v })} />
-          <TextArea label={t("stressLevel")} value={anamnesis.stressLevel ?? ""} onChange={(v) => patch({ stressLevel: v })} />
+          {(["dislikedFoods", "bowelFunction", "menstrualCycle", "medication", "sleepQuality", "stressLevel"] as const).map((k) => (
+            <TextArea key={k} label={t(k)} value={a[k] ?? ""} onChange={(v) => patchA({ [k]: v })} />
+          ))}
         </CardContent>
       </Card>
 
-      {/* Food history */}
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="text-base">{t("foodHistory")}</CardTitle>
+          <CardTitle className="text-lg">{t("foodHistory")}</CardTitle>
+          <p className="text-xs text-muted-foreground">{isFirst ? t("firstConsultDetailed") : t("followUpSimplified")}</p>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">{isFirst ? t("firstConsultDetailed") : t("followUpSimplified")}</p>
           {isFirst ? (
             <>
               {fhMeals.map((m) => (
-                <div key={m.id} className="grid gap-2 rounded-md border border-border p-3 sm:grid-cols-[1fr_2fr_2fr_auto]">
+                <div key={m.id} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr_2fr_2fr_auto]">
                   <div className="space-y-1.5">
-                    <Input value={m.name} onChange={(e) => patchMeal(m.id, { name: e.target.value })} placeholder={t("meal")} className="h-9 font-medium" />
-                    <Input value={m.timePlace ?? ""} onChange={(e) => patchMeal(m.id, { timePlace: e.target.value })} placeholder={t("timePlace")} className="h-8 text-xs" />
+                    <Input value={m.name} onChange={(e) => patchFhMeal(m.id, { name: e.target.value })} placeholder={t("meal")} className="font-medium" aria-label={t("meal")} />
+                    <Input value={m.timePlace ?? ""} onChange={(e) => patchFhMeal(m.id, { timePlace: e.target.value })} placeholder={t("timePlace")} className="h-8 text-xs" aria-label={t("timePlace")} />
                   </div>
-                  <Textarea value={m.content ?? ""} onChange={(e) => patchMeal(m.id, { content: e.target.value })} placeholder={t("content")} rows={3} />
-                  <Textarea value={m.advice ?? ""} onChange={(e) => patchMeal(m.id, { advice: e.target.value })} placeholder={t("advice")} rows={3} />
-                  <button onClick={() => removeMeal(m.id)} className="self-start text-muted-foreground hover:text-destructive">✕</button>
+                  <Textarea value={m.content ?? ""} onChange={(e) => patchFhMeal(m.id, { content: e.target.value })} placeholder={t("content")} rows={3} aria-label={t("content")} />
+                  <Textarea value={m.advice ?? ""} onChange={(e) => patchFhMeal(m.id, { advice: e.target.value })} placeholder={t("advice")} rows={3} aria-label={t("advice")} />
+                  <button
+                    type="button"
+                    onClick={() => setFh({ meals: fhMeals.filter((x) => x.id !== m.id) })}
+                    className="self-start rounded p-1 text-muted-foreground hover:text-destructive"
+                    aria-label={t("removeMeal")}
+                  >
+                    <X className="size-4" />
+                  </button>
                 </div>
               ))}
-              <Button variant="outline" size="sm" onClick={addMeal}>{t("addMealBlock")}</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => setFh({ meals: [...fhMeals, { id: newId("fh"), name: defaultNames[fhMeals.length] ?? "" }] })}>
+                  <Plus /> {t("addMealBlock")}
+                </Button>
+                {fhMeals.length === 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setFh({ meals: defaultNames.map((name) => ({ id: newId("fh"), name })) })}>
+                    {t("addStandardMeals")}
+                  </Button>
+                )}
+              </div>
               <div className="grid gap-3 sm:grid-cols-3">
-                <TextArea label={t("hydration")} value={foodHistory.hydration ?? ""} onChange={(v) => setFoodHistory({ ...foodHistory, hydration: v })} />
-                <TextArea label={t("adviceObservations")} value={foodHistory.adviceObservations ?? ""} onChange={(v) => setFoodHistory({ ...foodHistory, adviceObservations: v })} />
-                <TextArea label={t("draft")} value={foodHistory.draft ?? ""} onChange={(v) => setFoodHistory({ ...foodHistory, draft: v })} />
+                <TextArea label={t("hydration")} value={fh.hydration ?? ""} onChange={(v) => setFh({ hydration: v })} />
+                <TextArea label={t("adviceObservations")} value={fh.adviceObservations ?? ""} onChange={(v) => setFh({ adviceObservations: v })} />
+                <TextArea label={t("draft")} value={fh.draft ?? ""} onChange={(v) => setFh({ draft: v })} />
               </div>
             </>
           ) : (
-            <Textarea
-              value={foodHistory.followUpNote ?? ""}
-              onChange={(e) => setFoodHistory({ ...foodHistory, followUpNote: e.target.value })}
-              rows={8}
-              placeholder={t("followUpNote")}
-            />
+            <Textarea value={fh.followUpNote ?? ""} onChange={(e) => setFh({ followUpNote: e.target.value })} rows={8} placeholder={t("followUpNote")} aria-label={t("followUpNote")} />
           )}
+          <TextArea label={t("consultationNotes")} value={consult.notes} onChange={(v) => patchConsult({ notes: v })} rows={3} />
         </CardContent>
       </Card>
     </div>
@@ -418,96 +420,149 @@ function AnamneseTab({
 }
 
 // ---------------------------------------------------------------------------
-// ANTROPOMETRIA (BOO-53)
+// ANTROPOMETRIA (BOO-53) — with the previous consultation's values alongside
 // ---------------------------------------------------------------------------
+type PerimeterKey = keyof Measurements["perimeters"];
+type SkinfoldKey = keyof Measurements["skinfolds"];
+
+const PERIMETERS: PerimeterKey[] = ["waist", "abdominal", "hip", "chest", "arm", "thigh", "calf"];
+const SKINFOLDS: SkinfoldKey[] = ["tricipital", "subscapular", "bicipital", "iliocristal", "supraspinal", "abdominal", "geminal", "crural", "peitoral"];
+
 function AntropometriaTab({
   t,
   meas,
   setMeas,
-  heightCm,
-  bmi,
-  sumPerimeters,
-  sumSkinfolds,
+  previous,
+  locale,
   consultNumber,
 }: {
-  t: (k: string, v?: Record<string, string | number>) => string;
+  t: T;
   meas: Measurements;
-  setMeas: (m: Measurements) => void;
-  heightCm?: number;
-  bmi?: number;
-  sumPerimeters?: number;
-  sumSkinfolds?: number;
+  setMeas: (fn: (m: Measurements) => Measurements) => void;
+  previous?: Consultation;
+  locale: string;
   consultNumber: number;
 }) {
-  const setP = (k: keyof Measurements["perimeters"], v?: number) =>
-    setMeas({ ...meas, perimeters: { ...meas.perimeters, [k]: v } });
-  const setS = (k: keyof Measurements["skinfolds"], v?: number) =>
-    setMeas({ ...meas, skinfolds: { ...meas.skinfolds, [k]: v } });
+  const tc = useTranslations("consultation");
+  const prev = previous?.measurements;
+  const heightCm = heightCmOf(meas);
+  const bmi = computeBmi(meas);
 
-  const perimeterKeys: { k: keyof Measurements["perimeters"]; label: string }[] = [
-    { k: "waist", label: t("abdominalPerimeter") === "Abdominal" ? "Cintura" : "Waist" },
-    { k: "abdominal", label: t("abdominalPerimeter") },
-    { k: "arm", label: "Braço" },
-    { k: "hip", label: "Anca" },
-    { k: "thigh", label: "Coxa" },
-    { k: "calf", label: "Geminal" },
-    { k: "chest", label: t("chest") },
-  ];
-  const skinfoldKeys: { k: keyof Measurements["skinfolds"]; label: string }[] = [
-    { k: "tricipital", label: "Tricipital" },
-    { k: "subscapular", label: "Subescapular" },
-    { k: "bicipital", label: "Bicipital" },
-    { k: "iliocristal", label: "Iliocristal" },
-    { k: "supraspinal", label: "Supraespinal" },
-    { k: "abdominal", label: "Abdominal" },
-    { k: "geminal", label: "Geminal" },
-    { k: "crural", label: "Crural" },
-    { k: "peitoral", label: t("peitoral") },
-  ];
+  const num = (label: string, value: number | undefined, prevValue: number | undefined, onChange: (v?: number) => void, unit?: string) => (
+    <MeasureField key={label} label={label} value={value} prev={prevValue} onChange={onChange} locale={locale} unit={unit} />
+  );
 
   return (
     <div className="space-y-6">
       <p className="text-xs text-muted-foreground">
-        {t("consultationN", { n: consultNumber })} · {t("evolutionHint")}
+        {t("consultationN", { n: consultNumber })}
+        {previous ? ` · ${t("comparedWith", { date: formatDate(previous.date, locale) })}` : ""}
       </p>
+
       <Card>
-        <CardHeader><CardTitle className="text-base">{t("evaluation")}</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <NumField label="Peso (kg)" value={meas.weightKg} onChange={(v) => setMeas({ ...meas, weightKg: v })} />
-          <NumField label={t("heightCm")} value={heightCm} onChange={(v) => setMeas({ ...meas, heightCm: v, heightM: v ? v / 100 : undefined })} />
-          <ReadOnly label="IMC" value={bmi} />
+        <CardHeader>
+          <CardTitle className="text-lg">{t("evaluation")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-3">
+          {num(t("weightKg"), meas.weightKg, prev?.weightKg, (v) => setMeas((m) => ({ ...m, weightKg: v })))}
+          {num(t("heightCm"), heightCm, heightCmOf(prev), (v) => setMeas((m) => ({ ...m, heightCm: v, heightM: undefined })))}
+          <ReadOnly label={tc("bmi")} value={bmi} locale={locale} hint={bmi ? t(`bmiClass.${bmiClass(bmi)}`) : undefined} />
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Perímetros (cm)</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-4">
-          {perimeterKeys.map((p) => (
-            <NumField key={p.k} label={p.label} value={meas.perimeters[p.k]} onChange={(v) => setP(p.k, v)} />
-          ))}
-          <ReadOnly label={t("perimetersSum")} value={sumPerimeters} />
+        <CardHeader>
+          <CardTitle className="text-lg">{tc("perimeters")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {PERIMETERS.map((k) =>
+            num(tc(k === "abdominal" ? "abdominalPerimeter" : k === "chest" ? "chest" : k), meas.perimeters[k], prev?.perimeters[k], (v) =>
+              setMeas((m) => ({ ...m, perimeters: { ...m.perimeters, [k]: v } })),
+            ),
+          )}
+          <ReadOnly label={tc("sumPerimeters")} value={sumPerimeters(meas)} locale={locale} />
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Pregas cutâneas (mm)</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-4">
-          {skinfoldKeys.map((p) => (
-            <NumField key={p.k} label={p.label} value={meas.skinfolds[p.k]} onChange={(v) => setS(p.k, v)} />
-          ))}
-          <ReadOnly label={t("skinfoldsSum")} value={sumSkinfolds} />
+        <CardHeader>
+          <CardTitle className="text-lg">{tc("skinfolds")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {SKINFOLDS.map((k) =>
+            num(tc(k === "abdominal" ? "abdominalSkinfold" : k), meas.skinfolds[k], prev?.skinfolds[k], (v) =>
+              setMeas((m) => ({ ...m, skinfolds: { ...m.skinfolds, [k]: v } })),
+            ),
+          )}
+          <ReadOnly label={tc("sumSkinfolds")} value={sumSkinfolds(meas)} locale={locale} />
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">{t("bioimpedance")}</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-4">
-          <NumField label="% Massa gorda" value={meas.bodyFatPct} onChange={(v) => setMeas({ ...meas, bodyFatPct: v })} />
-          <NumField label={t("leanMass")} value={meas.leanMassKg} onChange={(v) => setMeas({ ...meas, leanMassKg: v })} />
-          <NumField label={t("waterPct")} value={meas.waterPct} onChange={(v) => setMeas({ ...meas, waterPct: v })} />
-          <NumField label={t("visceralFat")} value={meas.visceralFat} onChange={(v) => setMeas({ ...meas, visceralFat: v })} />
+        <CardHeader>
+          <CardTitle className="text-lg">{t("bioimpedance")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          {num(tc("bodyFat"), meas.bodyFatPct, prev?.bodyFatPct, (v) => setMeas((m) => ({ ...m, bodyFatPct: v })))}
+          {num(tc("muscleMass"), meas.muscleMassKg, prev?.muscleMassKg, (v) => setMeas((m) => ({ ...m, muscleMassKg: v })))}
+          {num(t("leanMass"), meas.leanMassKg, prev?.leanMassKg, (v) => setMeas((m) => ({ ...m, leanMassKg: v })))}
+          {num(t("waterPct"), meas.waterPct, prev?.waterPct, (v) => setMeas((m) => ({ ...m, waterPct: v })))}
+          {num(t("visceralFat"), meas.visceralFat, prev?.visceralFat, (v) => setMeas((m) => ({ ...m, visceralFat: v })))}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function MeasureField({
+  label,
+  value,
+  prev,
+  onChange,
+  locale,
+  unit,
+}: {
+  label: string;
+  value?: number;
+  prev?: number;
+  onChange: (v?: number) => void;
+  locale: string;
+  unit?: string;
+}) {
+  const delta = value != null && prev != null ? r1(value - prev) : undefined;
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <NumberInput value={value} onValueChange={onChange} min={0} aria-label={label} />
+      {prev != null && (
+        <p className="text-[11px] lining-nums tabular-nums text-muted-foreground">
+          {formatNumber(prev, locale)}
+          {unit}
+          {delta != null && delta !== 0 && (
+            <span className={cn("ml-1.5 font-medium", delta < 0 ? "text-brand-600" : "text-accent-700")}>
+              {delta > 0 ? "+" : ""}
+              {formatNumber(delta, locale)}
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReadOnly({ label, value, locale, hint, highlight }: { label: string; value?: number; locale: string; hint?: string; highlight?: boolean }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <div
+        className={cn(
+          "flex h-9 items-center rounded-md border px-3 text-sm font-semibold lining-nums tabular-nums",
+          highlight ? "border-brand-100 bg-brand-50 text-brand-700" : "border-border bg-muted/50",
+        )}
+      >
+        {value != null ? formatNumber(value, locale) : "—"}
+      </div>
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -517,69 +572,148 @@ function AntropometriaTab({
 // ---------------------------------------------------------------------------
 function ResultadosTab({
   t,
+  locale,
   fat,
   muscle,
+  meas,
+  sex,
+  bmi,
   athlete,
-  ready,
+  missing,
+  onApply,
 }: {
-  t: (k: string, v?: Record<string, string | number>) => string;
+  t: T;
+  locale: string;
   fat: { results: FormulaResult[]; average?: number };
   muscle: { results: FormulaResult[]; average?: number };
+  meas: Measurements;
+  sex?: Sex;
+  bmi?: number;
   athlete: boolean;
-  ready: boolean;
+  missing: string[];
+  onApply: (p: Partial<Measurements>) => void;
 }) {
-  if (!ready) {
-    return <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">{t("missingInputs")}</p>;
-  }
+  const waist = meas.perimeters.waist;
+  const hip = meas.perimeters.hip;
+  const whr = waist && hip ? Math.round((waist / hip) * 100) / 100 : undefined;
+  const whrRisk = whr != null && sex ? whr > (sex === "male" ? 0.9 : 0.85) : undefined;
+  const fatPct = meas.bodyFatPct ?? fat.average;
+  const fatKg = meas.weightKg && fatPct != null ? r1((meas.weightKg * fatPct) / 100) : undefined;
+
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <ResultsCard title={t("bodyFatTitle")} unit="%" data={fat} t={t} note={athlete ? t("athleteFormulas") : undefined} />
-      <ResultsCard title={t("muscleMassTitle")} unit="kg" data={muscle} t={t} />
+    <div className="space-y-6">
+      {missing.length > 0 && (
+        <p className="flex items-start gap-2 rounded-lg border border-accent/25 bg-accent/5 px-4 py-3 text-sm">
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-accent" />
+          {t("missingInputsList", { fields: missing.join(", ") })}
+        </p>
+      )}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SummaryTile label={t("bmiLabel")} value={bmi} locale={locale} hint={bmi ? t(`bmiClass.${bmiClass(bmi)}`) : undefined} />
+        <SummaryTile
+          label={t("whr")}
+          value={whr}
+          locale={locale}
+          hint={whrRisk == null ? t("whrNeeds") : whrRisk ? t("whrRisk") : t("whrOk")}
+          warn={whrRisk}
+        />
+        <SummaryTile label={t("fatMassKg")} value={fatKg} locale={locale} unit="kg" hint={fatPct != null ? `${formatNumber(fatPct, locale)}%` : undefined} />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ResultsCard
+          t={t}
+          locale={locale}
+          title={t("bodyFatTitle")}
+          unit="%"
+          data={fat}
+          note={athlete ? t("athleteFormulas") : undefined}
+          current={meas.bodyFatPct}
+          onUse={(v) => onApply({ bodyFatPct: v })}
+        />
+        <ResultsCard t={t} locale={locale} title={t("muscleMassTitle")} unit="kg" data={muscle} current={meas.muscleMassKg} onUse={(v) => onApply({ muscleMassKg: v })} />
+      </div>
+    </div>
+  );
+}
+
+function SummaryTile({ label, value, locale, unit, hint, warn }: { label: string; value?: number; locale: string; unit?: string; hint?: string; warn?: boolean }) {
+  return (
+    <div className="card-surface p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 font-serif text-2xl font-semibold lining-nums tabular-nums">
+        {value != null ? formatNumber(value, locale, 2) : "—"}
+        {value != null && unit && <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>}
+      </p>
+      {hint && <p className={cn("mt-0.5 text-xs", warn ? "font-medium text-accent-700" : "text-muted-foreground")}>{hint}</p>}
     </div>
   );
 }
 
 function ResultsCard({
+  t,
+  locale,
   title,
   unit,
   data,
-  t,
   note,
+  current,
+  onUse,
 }: {
+  t: T;
+  locale: string;
   title: string;
   unit: string;
   data: { results: FormulaResult[]; average?: number };
-  t: (k: string) => string;
   note?: string;
+  current?: number;
+  onUse: (v: number) => void;
 }) {
+  const fmt = (v?: number) => (v != null ? `${formatNumber(v, locale)} ${unit}` : "—");
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle className="text-lg">{title}</CardTitle>
+        {note && <Badge>{note}</Badge>}
+      </CardHeader>
       <CardContent>
-        {note && <p className="mb-2 text-xs text-brand-600">{note}</p>}
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="py-1.5 font-medium">{t("formula")}</th>
               <th className="py-1.5 text-right font-medium">{t("value")}</th>
+              <th className="w-16" />
             </tr>
           </thead>
           <tbody>
             {data.results.map((r) => (
-              <tr key={r.key} className="border-b border-border/50 last:border-0">
-                <td className="py-1.5">{r.label}</td>
-                <td className="py-1.5 text-right font-medium">{r.value != null ? `${r.value} ${unit}` : "—"}</td>
+              <tr key={r.key} className="border-b border-border/50">
+                <td className="py-2">{r.label}</td>
+                <td className="py-2 text-right font-medium lining-nums tabular-nums">{fmt(r.value)}</td>
+                <td className="py-2 text-right">
+                  {r.value != null && (
+                    <button type="button" onClick={() => onUse(r.value!)} className="text-xs text-brand-600 hover:underline">
+                      {t("use")}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
-            <tr className="bg-brand-50/60">
-              <td className="py-2 font-semibold text-brand-600">{t("average")}</td>
-              <td className="py-2 text-right font-semibold text-brand-600">
-                {data.average != null ? `${data.average} ${unit}` : "—"}
+            <tr className="bg-brand-50/70">
+              <td className="rounded-l-md py-2 pl-2 font-semibold text-brand-700">{t("average")}</td>
+              <td className="py-2 text-right font-semibold lining-nums tabular-nums text-brand-700">{fmt(data.average)}</td>
+              <td className="rounded-r-md py-2 pr-2 text-right">
+                {data.average != null && (
+                  <button type="button" onClick={() => onUse(data.average!)} className="text-xs font-medium text-brand-700 hover:underline">
+                    {t("use")}
+                  </button>
+                )}
               </td>
             </tr>
           </tbody>
         </table>
-        {data.average == null && <p className="mt-2 text-xs italic text-muted-foreground">{t("noData")}</p>}
+        <p className="mt-3 text-xs text-muted-foreground">
+          {current != null ? t("currentRecorded", { value: fmt(current) }) : t("useHint")}
+        </p>
       </CardContent>
     </Card>
   );
@@ -590,80 +724,147 @@ function ResultsCard({
 // ---------------------------------------------------------------------------
 function NecessidadesTab({
   t,
-  gebFormulaKey,
-  suggestedKey,
+  locale,
   energy,
   setEnergy,
+  gebKey,
+  suggestedKey,
+  input,
   gebValue,
   getValue,
   pal,
+  targetKcal,
 }: {
-  t: (k: string, v?: Record<string, string | number>) => string;
-  gebFormulaKey?: string;
-  suggestedKey?: string;
+  t: T;
+  locale: string;
   energy: EnergyConfig;
   setEnergy: (e: EnergyConfig) => void;
+  gebKey?: string;
+  suggestedKey?: string;
+  input: { sex?: Sex; weightKg?: number; heightCm?: number; ageYears?: number; fatFreeMassKg?: number };
   gebValue?: number;
   getValue?: number;
   pal: number;
+  targetKcal?: number;
 }) {
+  const applicable = GEB_FORMULAS.filter((f) => isApplicable(f, input));
+  const others = GEB_FORMULAS.filter((f) => !isApplicable(f, input));
+  const label = (key: string, l: string) => `${l}${key === suggestedKey ? ` — ${t("suggested")}` : ""}`;
+  const needsFfm = gebKey ? FFM_FORMULAS.has(gebKey) : false;
+  const goals: Goal[] = ["loss", "maintain", "gain"];
+
+  const inputs = [
+    [t("weightKg"), input.weightKg],
+    [t("heightCm"), input.heightCm],
+    [t("ageLabel"), input.ageYears],
+    [t("ffm"), input.fatFreeMassKg],
+  ] as const;
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
-        <CardHeader><CardTitle className="text-base">{t("gebTitle")}</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>{t("gebFormula")}</Label>
-            <select
-              value={gebFormulaKey ?? ""}
-              onChange={(e) => setEnergy({ ...energy, gebFormula: e.target.value })}
-              className={selectCls}
-            >
-              {GEB_FORMULAS.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.label}
-                  {f.key === suggestedKey ? ` (${t("suggested")})` : ""}
-                </option>
-              ))}
-            </select>
+        <CardHeader>
+          <CardTitle className="text-lg">{t("gebTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field label={t("gebFormula")} htmlFor="geb-formula">
+            <Select id="geb-formula" value={gebKey ?? ""} onChange={(e) => setEnergy({ ...energy, gebFormula: e.target.value })}>
+              <optgroup label={t("applicable")}>
+                {applicable.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {label(f.key, f.label)}
+                  </option>
+                ))}
+              </optgroup>
+              {others.length > 0 && (
+                <optgroup label={t("otherFormulas")}>
+                  {others.map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          </Field>
+          <div className="grid grid-cols-4 gap-2 rounded-lg bg-muted/50 p-3 text-center">
+            {inputs.map(([l, v]) => (
+              <div key={l}>
+                <p className="text-[10px] text-muted-foreground">{l}</p>
+                <p className="text-sm font-medium lining-nums tabular-nums">{v != null ? formatNumber(v, locale) : "—"}</p>
+              </div>
+            ))}
           </div>
-          <ReadOnly label="GEB (kcal)" value={gebValue} highlight />
+          {gebValue == null && (
+            <p className="text-xs text-accent-700">{needsFfm ? t("needsFfm") : t("missingInputs")}</p>
+          )}
+          <ReadOnly label={t("gebKcal")} value={gebValue} locale={locale} highlight />
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">{t("getTitle")}</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>{t("pal")}</Label>
-            <select
-              value={pal}
-              onChange={(e) => setEnergy({ ...energy, pal: Number(e.target.value) })}
-              className={selectCls}
-            >
-              {PAL_OPTIONS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {t(p.labelKey)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <ReadOnly label="GET (kcal)" value={getValue} highlight />
-          <div className="space-y-1.5">
-            <Label>{t("planTarget")}</Label>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                value={energy.targetKcal ?? ""}
-                onChange={(e) => setEnergy({ ...energy, targetKcal: e.target.value === "" ? undefined : Number(e.target.value) })}
-                placeholder={getValue ? String(getValue) : ""}
-                className="h-9"
+        <CardHeader>
+          <CardTitle className="text-lg">{t("getTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
+            <Field label={t("pal")} htmlFor="pal">
+              <Select id="pal" value={pal} onChange={(e) => setEnergy({ ...energy, pal: Number(e.target.value) })}>
+                {PAL_OPTIONS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {t(`palOptions.${p.labelKey.split(".")[1]}`)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={t("stressFactor")} htmlFor="stress">
+              <NumberInput
+                id="stress"
+                value={energy.stressFactor}
+                onValueChange={(v) => setEnergy({ ...energy, stressFactor: v })}
+                placeholder="1.0"
+                min={0.5}
+                max={3}
               />
-              <Button variant="outline" size="sm" disabled={!getValue} onClick={() => setEnergy({ ...energy, targetKcal: getValue })}>
-                {t("useGet")}
-              </Button>
-            </div>
+            </Field>
           </div>
+          <ReadOnly label={t("getKcal")} value={getValue} locale={locale} highlight />
+          <div className="space-y-1.5">
+            <Label htmlFor="target">{t("planTarget")}</Label>
+            <div className="flex flex-wrap gap-2">
+              <NumberInput
+                id="target"
+                value={energy.targetKcal}
+                onValueChange={(v) => setEnergy({ ...energy, targetKcal: v })}
+                placeholder={getValue ? String(getValue) : ""}
+                className="w-32"
+              />
+              {goals.map((g) => (
+                <Button
+                  key={g}
+                  variant="outline"
+                  size="sm"
+                  disabled={!getValue}
+                  onClick={() => setEnergy({ ...energy, targetKcal: Math.round(getValue! * (1 + GOAL_ADJUSTMENT[g])) })}
+                >
+                  {t(`goalShortcut.${g}`)}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {energy.targetKcal != null ? t("targetManual") : t("targetFollowsGet")}
+              {energy.targetKcal != null && (
+                <button type="button" className="ml-2 text-brand-600 hover:underline" onClick={() => setEnergy({ ...energy, targetKcal: undefined })}>
+                  {t("resetToGet")}
+                </button>
+              )}
+            </p>
+          </div>
+          {targetKcal != null && (
+            <p className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-700">
+              {t("targetSummary", { kcal: formatNumber(targetKcal, locale, 0) })}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -675,111 +876,99 @@ function NecessidadesTab({
 // ---------------------------------------------------------------------------
 function MacrosTab({
   t,
-  macroCfg,
-  setMacroCfg,
+  cfg,
+  setCfg,
   targetKcal,
-  macroResult,
-  pctSum,
+  result,
+  weightKg,
 }: {
-  t: (k: string, v?: Record<string, string | number>) => string;
-  macroCfg: MacroConfig;
-  setMacroCfg: (m: MacroConfig) => void;
+  t: T;
+  cfg: MacroConfig;
+  setCfg: (m: MacroConfig) => void;
   targetKcal?: number;
-  macroResult?: ReturnType<typeof macroSplit>;
-  pctSum: number;
+  result?: MacroBreakdown;
+  weightKg?: number;
 }) {
-  const rows: { key: keyof MacroConfig; label: string; res?: { kcal: number; grams: number; gPerKg?: number } }[] = [
-    { key: "proteinPct", label: t("protein"), res: macroResult?.protein },
-    { key: "carbsPct", label: t("carbs"), res: macroResult?.carbs },
-    { key: "fatPct", label: t("fat"), res: macroResult?.fat },
-  ];
+  const pctSum = cfg.proteinPct + cfg.carbsPct + cfg.fatPct;
+  const rows = [
+    { key: "proteinPct", label: t("protein"), res: result?.protein, color: "bg-brand" },
+    { key: "carbsPct", label: t("carbs"), res: result?.carbs, color: "bg-brand-200" },
+    { key: "fatPct", label: t("fat"), res: result?.fat, color: "bg-accent" },
+  ] as const;
+
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">{t("macroDistribution")}</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
+      <CardHeader>
+        <CardTitle className="text-lg">{t("macroDistribution")}</CardTitle>
         <p className="text-sm text-muted-foreground">
           {t("planTarget")}: <span className="font-semibold text-foreground">{targetKcal ?? "—"} kcal</span>
         </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
+          {rows.map((r) => (
+            <div key={r.key} className={cn("h-full transition-all", r.color)} style={{ width: `${Math.max(0, (cfg[r.key] / Math.max(pctSum, 100)) * 100)}%` }} />
+          ))}
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[460px] text-sm">
+          <table className="w-full min-w-[480px] text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-1.5 font-medium">{t("macronutrient")}</th>
-                <th className="py-1.5 text-right font-medium">{t("vetPct")}</th>
-                <th className="py-1.5 text-right font-medium">{t("kcal")}</th>
-                <th className="py-1.5 text-right font-medium">{t("grams")}</th>
-                <th className="py-1.5 text-right font-medium">{t("gramsPerKg")}</th>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="py-2 font-medium">{t("macronutrient")}</th>
+                <th className="py-2 text-right font-medium">{t("vetPct")}</th>
+                <th className="py-2 text-right font-medium">kcal</th>
+                <th className="py-2 text-right font-medium">{t("grams")}</th>
+                <th className="py-2 text-right font-medium">{t("gramsPerKg")}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.key} className="border-b border-border/50 last:border-0">
-                  <td className="py-1.5">{row.label}</td>
-                  <td className="py-1.5 text-right">
-                    <input
-                      type="number"
-                      value={macroCfg[row.key]}
-                      onChange={(e) => setMacroCfg({ ...macroCfg, [row.key]: Number(e.target.value) || 0 })}
-                      className="h-8 w-16 rounded border border-input bg-card px-2 text-right"
+                  <td className="py-2">
+                    <span className="flex items-center gap-2">
+                      <span className={cn("size-2.5 rounded-full", row.color)} />
+                      {row.label}
+                    </span>
+                  </td>
+                  <td className="py-2 text-right">
+                    <NumberInput
+                      value={cfg[row.key]}
+                      onValueChange={(v) => setCfg({ ...cfg, [row.key]: v ?? 0 })}
+                      min={0}
+                      max={100}
+                      className="ml-auto h-8 w-16 text-right"
+                      aria-label={`${row.label} %`}
                     />
                   </td>
-                  <td className="py-1.5 text-right">{row.res ? Math.round(row.res.kcal) : "—"}</td>
-                  <td className="py-1.5 text-right font-medium">{row.res ? row.res.grams : "—"}</td>
-                  <td className="py-1.5 text-right text-muted-foreground">{row.res?.gPerKg ?? "—"}</td>
+                  <td className="py-2 text-right lining-nums tabular-nums">{row.res ? row.res.kcal : "—"}</td>
+                  <td className="py-2 text-right font-medium lining-nums tabular-nums">{row.res ? `${row.res.grams} g` : "—"}</td>
+                  <td className="py-2 text-right lining-nums tabular-nums text-muted-foreground">
+                    {row.res?.gPerKg ?? (weightKg ? "—" : t("needsWeight"))}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {pctSum !== 100 && <p className="text-sm text-destructive">{t("sumWarning", { sum: pctSum })}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className={cn("text-sm", pctSum === 100 ? "text-muted-foreground" : "font-medium text-destructive")}>
+            {pctSum === 100 ? t("sumOk") : t("sumWarning", { sum: pctSum })}
+          </p>
+          <Button variant="ghost" size="sm" onClick={() => setCfg(DEFAULT_MACRO_CONFIG)}>
+            {t("resetMacros")}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-// --- shared field helpers ---------------------------------------------------
-const selectCls = "flex h-9 w-full rounded-md border border-input bg-card px-2 text-sm";
-
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+// --- shared field helper ----------------------------------------------------
+function TextArea({ label, value, onChange, rows = 2 }: { label: string; value: string; onChange: (v: string) => void; rows?: number }) {
+  const id = `ta-${label.replace(/\W+/g, "-")}`;
   return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} className="h-9" />
-    </div>
-  );
-}
-
-function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2} />
-    </div>
-  );
-}
-
-function NumField({ label, value, onChange }: { label: string; value?: number; onChange: (v: number | undefined) => void }) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-[11px] normal-case">{label}</Label>
-      <Input
-        type="number"
-        step="0.1"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-        className="h-9"
-      />
-    </div>
-  );
-}
-
-function ReadOnly({ label, value, highlight }: { label: string; value?: number; highlight?: boolean }) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-[11px] normal-case">{label}</Label>
-      <div className={cn("flex h-9 items-center rounded-md border px-3 text-sm font-semibold", highlight ? "border-brand-100 bg-brand-50 text-brand-600" : "border-border bg-muted/40")}>
-        {value ?? "—"}
-      </div>
-    </div>
+    <Field label={label} htmlFor={id}>
+      <Textarea id={id} value={value} onChange={(e) => onChange(e.target.value)} rows={rows} />
+    </Field>
   );
 }

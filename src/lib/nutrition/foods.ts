@@ -1,4 +1,5 @@
 import foodsData from "./foods.json";
+import { normalizeSearch as normalize } from "@/lib/utils";
 
 export interface Food {
   group: string;
@@ -23,12 +24,6 @@ export function foodGroups(): string[] {
   );
 }
 
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-}
 
 /** Case/accent-insensitive search by name, optionally filtered by group. */
 export function searchFoods(query: string, group?: string, limit = 100): Food[] {

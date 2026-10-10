@@ -38,14 +38,19 @@ epics (labels), and user stories with acceptance criteria. A companion
 ## User Stories
 
 ### epic:auth — Authentication & multi-tenant
-- ✅ **As a nutritionist, I can sign up and log in** so my workspace is private.
-  - AC: email/password signup + login; session cookie; protected routes redirect to /login.
+- ✅ **As the studio, I create each nutritionist's account** (no public signup).
+  - AC: `npm run admin -- invite` creates the account and a single-use set-password link; accounts can be disabled.
+- ✅ **As a nutritionist, I can log in** so my workspace is private.
+  - AC: email/password login; protected routes redirect to /login; attempts are rate limited.
 - ✅ **As a nutritionist, my data is isolated from other accounts** (multi-tenant).
   - AC: clients/plans/recommendations/templates/appointments scoped per nutritionist id.
-- ⬜ **As a nutritionist, I can reset my password** so I can recover access.
-  - AC: email reset flow (requires Supabase Auth / email provider).
-- ⬜ **As a nutritionist, I can stay logged in securely** with signed/rotating sessions.
-  - AC: replace plaintext-id cookie with Supabase JWT session.
+- ✅ **As a nutritionist, I can reset my password** so I can recover access.
+  - AC: emailed single-use link → choose a new password (Supabase Auth + SMTP provider).
+- ✅ **As a nutritionist, I can change my password and sign-in email** in Settings.
+- ✅ **As a nutritionist, I can protect my account with two-step verification** (TOTP).
+  - AC: enrol with QR code; code required at every sign-in; studio can reset it.
+- ✅ **As a nutritionist, I can stay logged in securely** with signed/rotating sessions.
+  - AC: Supabase JWT session refreshed in the proxy.
 
 ### epic:clients — Clients & consultations
 - ✅ **As a nutritionist, I can create and edit clients** (name, contacts, goals, notes).

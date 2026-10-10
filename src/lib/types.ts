@@ -82,9 +82,10 @@ export interface Anamnesis {
 /** Anthropometric measurements captured at a consultation (BOO-53). */
 export interface Measurements {
   weightKg?: number;
-  heightM?: number;
-  /** Height in cm — primary input on the antropometria tab (heightM kept for legacy). */
+  /** Height in cm — the canonical height field. */
   heightCm?: number;
+  /** @deprecated Legacy height in metres; read via heightCmOf(), never written. */
+  heightM?: number;
   // Bioimpedance readouts (entered by hand from the device).
   bodyFatPct?: number;
   muscleMassKg?: number;
@@ -372,25 +373,47 @@ export interface PlanDocumentData {
 
 // --- helpers ---------------------------------------------------------------
 
-export function computeBmi(m: Measurements): number | undefined {
-  if (!m.weightKg || !m.heightM) return undefined;
-  const h = m.heightM > 3 ? m.heightM / 100 : m.heightM; // tolerate cm input
-  if (!h) return undefined;
-  return Math.round((m.weightKg / (h * h)) * 10) / 10;
+export const emptyMeasurements = (): Measurements => ({ perimeters: {}, skinfolds: {} });
+
+/** Height in cm, tolerating the legacy `heightM` field (metres, or cm typed into it). */
+export function heightCmOf(m: Partial<Measurements> | undefined): number | undefined {
+  if (!m) return undefined;
+  if (typeof m.heightCm === "number" && m.heightCm > 0) return m.heightCm;
+  if (typeof m.heightM === "number" && m.heightM > 0) {
+    return m.heightM < 3 ? Math.round(m.heightM * 1000) / 10 : m.heightM;
+  }
+  return undefined;
 }
 
-export function sumPerimeters(m: Measurements): number | undefined {
-  const v = Object.values(m.perimeters).filter(
-    (x): x is number => typeof x === "number",
-  );
+/** Canonical shape: heightCm set, legacy heightM dropped, sub-objects present. */
+export function normalizeMeasurements(m: Partial<Measurements> | null | undefined): Measurements {
+  const src = m ?? {};
+  const { heightM: _legacy, ...rest } = src;  
+  return {
+    ...rest,
+    heightCm: heightCmOf(src),
+    perimeters: { ...(src.perimeters ?? {}) },
+    skinfolds: { ...(src.skinfolds ?? {}) },
+  };
+}
+
+export function computeBmi(m: Partial<Measurements> | undefined): number | undefined {
+  const h = heightCmOf(m);
+  if (!m?.weightKg || !h) return undefined;
+  const meters = h / 100;
+  return Math.round((m.weightKg / (meters * meters)) * 10) / 10;
+}
+
+function sumOf(values: Record<string, number | undefined>): number | undefined {
+  const v = Object.values(values).filter((x): x is number => typeof x === "number" && !Number.isNaN(x));
   if (!v.length) return undefined;
   return Math.round(v.reduce((a, b) => a + b, 0) * 10) / 10;
 }
 
-export function sumSkinfolds(m: Measurements): number | undefined {
-  const v = Object.values(m.skinfolds).filter(
-    (x): x is number => typeof x === "number",
-  );
-  if (!v.length) return undefined;
-  return Math.round(v.reduce((a, b) => a + b, 0) * 10) / 10;
+export const sumPerimeters = (m: Measurements) => sumOf(m.perimeters);
+export const sumSkinfolds = (m: Measurements) => sumOf(m.skinfolds);
+
+/** Newest first: by date, then by creation time (stable for same-day consultations). */
+export function byNewest<T extends { date: string; createdAt?: string }>(a: T, b: T): number {
+  return b.date.localeCompare(a.date) || (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
 }

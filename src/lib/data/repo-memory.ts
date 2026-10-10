@@ -1,22 +1,48 @@
 import {
-  computeBmi,
+  byNewest,
   DEFAULT_CONSULTATION_TYPES,
+  emptyMeasurements,
+  normalizeMeasurements,
   type Appointment,
   type BillingEntry,
   type Client,
   type Consultation,
   type ConsultationType,
   type DbFood,
-  type Meal,
   type MealPlan,
   type NutritionistProfile,
-  type PlanTemplate,
   type PdfTemplateFile,
+  type PlanTemplate,
   type Recipe,
   type Recommendation,
   type SentMessage,
 } from "@/lib/types";
-import { clearSession, getSessionNid, setSession } from "@/lib/auth/session";
+import {
+  checkPassword,
+  clearSession,
+  getSessionNid,
+  hashPassword,
+  setSession,
+} from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+import { newId, todayISO } from "@/lib/utils";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password";
+import type {
+  AuthStatus,
+  BillingPatch,
+  EmailChangeResult,
+  MfaEnrollment,
+  MfaStatus,
+  PasswordResult,
+  FileKind,
+  NewAppointment,
+  NewBillingEntry,
+  NewClient,
+  NewFood,
+  NewRecipe,
+  ReminderStore,
+  StoredFile,
+} from "./repo-types";
 import {
   seedAppointments,
   seedClients,
@@ -29,18 +55,18 @@ import {
 } from "./seed";
 
 // ---------------------------------------------------------------------------
-// In-memory data store.
+// In-memory data store — the zero-setup default backend.
 //
-// This is the default Alimea data backend so the app runs end-to-end with no
-// external setup. It implements the same async repository API a Supabase-backed
-// adapter would, so swapping to the real database (see src/lib/supabase) is a
-// drop-in change. The store is kept on globalThis to survive HMR in dev.
+// Implements the Repository contract (repo-types.ts) so it is a drop-in swap
+// for the Supabase backend. Every by-id access checks that the row belongs to
+// the signed-in tenant. The store lives on globalThis to survive dev HMR.
+// Data is lost on restart: this backend is for demos and local development.
 // ---------------------------------------------------------------------------
 
 interface Account {
   id: string; // == nutritionist/profile id
   email: string;
-  password: string; // plain for local demo only
+  passwordHash: string;
 }
 
 interface Store {
@@ -58,14 +84,15 @@ interface Store {
   billingEntries: BillingEntry[];
   foods: DbFood[];
   recipes: Recipe[];
+  files: Map<string, StoredFile>;
 }
 
 const g = globalThis as unknown as { __alimeaStore?: Store };
 
-function getStore(): Store {
+function store(): Store {
   if (!g.__alimeaStore) {
     g.__alimeaStore = {
-      accounts: [{ id: seedProfile.id, email: "eduarda@alimea.app", password: "alimea" }],
+      accounts: [{ id: seedProfile.id, email: "eduarda@alimea.app", passwordHash: hashPassword("alimea") }],
       profiles: [structuredClone(seedProfile)],
       clients: structuredClone(seedClients),
       consultations: structuredClone(seedConsultations),
@@ -83,175 +110,210 @@ function getStore(): Store {
         isDefault: true,
       })),
       billingEntries: [],
-      foods: structuredClone(seedFoods).map((f) => ({ ...f, nutritionistId: seedProfile.id })),
+      foods: structuredClone(seedFoods),
       recipes: [],
+      files: new Map(),
     };
   }
   return g.__alimeaStore;
 }
 
-const uid = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`;
 const now = () => new Date().toISOString();
+const clone = <T>(v: T): T => structuredClone(v);
 
-/** The current tenant (nutritionist) id from the session, with a safe fallback. */
-async function currentNid(): Promise<string> {
-  const nid = await getSessionNid();
-  const s = getStore();
-  if (nid && s.accounts.some((a) => a.id === nid)) return nid;
-  return s.accounts[0]?.id ?? seedProfile.id;
+/**
+ * Signed-in tenant id. Without a valid session, redirect to login (middleware
+ * adds the locale) — pages render in parallel with the layout's auth guard, so
+ * throwing here would show an error screen instead of the login page.
+ */
+async function nid(): Promise<string> {
+  const id = await getSessionNid();
+  if (!id || !store().accounts.some((a) => a.id === id)) redirect("/login");
+  return id;
 }
 
 /** Ids of clients owned by the current tenant. */
 async function ownClientIds(): Promise<Set<string>> {
-  const nid = await currentNid();
-  return new Set(getStore().clients.filter((c) => c.nutritionistId === nid).map((c) => c.id));
+  const id = await nid();
+  return new Set(store().clients.filter((c) => c.nutritionistId === id).map((c) => c.id));
+}
+
+async function ownClient(id: string): Promise<Client | undefined> {
+  const me = await nid();
+  return store().clients.find((c) => c.id === id && c.nutritionistId === me);
+}
+
+/** Find a row owned directly (nutritionistId) by the tenant. */
+async function findOwned<T extends { id: string; nutritionistId: string }>(list: T[], id: string) {
+  const me = await nid();
+  return list.find((x) => x.id === id && x.nutritionistId === me);
+}
+
+/** Find a row owned through its client (consultations, plans, appointments). */
+async function findViaClient<T extends { id: string; clientId: string }>(list: T[], id: string) {
+  const own = await ownClientIds();
+  return list.find((x) => x.id === id && own.has(x.clientId));
 }
 
 // --- Auth ------------------------------------------------------------------
-export async function authenticate(
-  email: string,
-  password: string,
-): Promise<string | null> {
-  const acc = getStore().accounts.find(
-    (a) => a.email.toLowerCase() === email.toLowerCase() && a.password === password,
-  );
-  if (acc) await setSession(acc.id);
-  return acc?.id ?? null;
+export async function authenticate(email: string, password: string): Promise<AuthStatus> {
+  const acc = store().accounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
+  if (!acc || !checkPassword(password, acc.passwordHash)) return "invalid";
+  await setSession(acc.id);
+  return "ok";
 }
 
 export async function signOut(): Promise<void> {
   await clearSession();
 }
 
-/** Current tenant id if authenticated, else null (used by the layout guard). */
 export async function getAuthNid(): Promise<string | null> {
-  return getSessionNid();
+  const id = await getSessionNid();
+  return id && store().accounts.some((a) => a.id === id) ? id : null;
 }
 
-export async function emailExists(email: string): Promise<boolean> {
-  return getStore().accounts.some((a) => a.email.toLowerCase() === email.toLowerCase());
+async function account(): Promise<Account> {
+  const me = await nid();
+  return store().accounts.find((a) => a.id === me)!;
 }
 
-/** Create a brand-new nutritionist account (own empty tenant). Returns its id. */
-export async function createAccount(data: {
-  name: string;
-  email: string;
-  password: string;
-}): Promise<string> {
-  const s = getStore();
-  const id = uid("nutri");
-  s.accounts.push({ id, email: data.email, password: data.password });
-  s.profiles.push({
-    id,
-    name: data.name,
-    email: data.email,
-    credential: "",
-    interfaceLanguage: "pt-PT",
-  });
-  await setSession(id);
-  return id;
+export async function getLoginEmail(): Promise<string | null> {
+  const id = await getAuthNid();
+  return store().accounts.find((a) => a.id === id)?.email ?? null;
+}
+
+// The demo backend sends no email, so there are no links to request or redeem.
+export async function requestPasswordReset(): Promise<void> {}
+export async function redeemEmailLink(): Promise<boolean> {
+  return false;
+}
+
+export async function setPassword(password: string): Promise<PasswordResult> {
+  if (password.length < MIN_PASSWORD_LENGTH) return "weak";
+  (await account()).passwordHash = hashPassword(password);
+  return "ok";
+}
+
+export async function changePassword(current: string, next: string): Promise<PasswordResult> {
+  const acc = await account();
+  if (!checkPassword(current, acc.passwordHash)) return "invalid";
+  if (checkPassword(next, acc.passwordHash)) return "same";
+  return setPassword(next);
+}
+
+export async function changeLoginEmail(email: string): Promise<EmailChangeResult> {
+  const acc = await account();
+  if (store().accounts.some((a) => a.id !== acc.id && a.email.toLowerCase() === email.toLowerCase())) return "exists";
+  acc.email = email;
+  return "ok";
+}
+
+// Two-factor authentication needs Supabase Auth.
+export async function getMfaStatus(): Promise<MfaStatus> {
+  return { supported: false, enabled: false, pending: false };
+}
+export async function startMfaEnrollment(): Promise<MfaEnrollment | null> {
+  return null;
+}
+export async function verifyMfa(): Promise<boolean> {
+  return false;
+}
+export async function disableMfa(): Promise<boolean> {
+  return false;
 }
 
 // --- Profile ---------------------------------------------------------------
 export async function getProfile(): Promise<NutritionistProfile> {
-  const nid = await currentNid();
-  const s = getStore();
-  return s.profiles.find((p) => p.id === nid) ?? s.profiles[0];
+  const me = await nid();
+  return clone(store().profiles.find((p) => p.id === me)!);
 }
 
-export async function getProfileById(id: string): Promise<NutritionistProfile | undefined> {
-  return getStore().profiles.find((p) => p.id === id);
-}
-
-export async function updateProfile(
-  patch: Partial<NutritionistProfile>,
-): Promise<NutritionistProfile> {
-  const nid = await currentNid();
-  const s = getStore();
-  const idx = s.profiles.findIndex((p) => p.id === nid);
-  if (idx >= 0) s.profiles[idx] = { ...s.profiles[idx], ...patch, id: nid };
-  return s.profiles[idx];
+export async function updateProfile(patch: Partial<Omit<NutritionistProfile, "id">>) {
+  const me = await nid();
+  const p = store().profiles.find((x) => x.id === me)!;
+  Object.assign(p, patch, { id: me });
+  return clone(p);
 }
 
 // --- Clients ---------------------------------------------------------------
 export async function listClients(): Promise<Client[]> {
-  const nid = await currentNid();
-  return getStore()
-    .clients.filter((c) => c.nutritionistId === nid)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const me = await nid();
+  return clone(
+    store()
+      .clients.filter((c) => c.nutritionistId === me)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  );
 }
 
-export async function getClient(id: string): Promise<Client | undefined> {
-  return getStore().clients.find((c) => c.id === id);
+export async function getClient(id: string) {
+  const c = await ownClient(id);
+  return c && clone(c);
 }
 
-export async function createClient(
-  data: Omit<Client, "id" | "nutritionistId" | "createdAt">,
-): Promise<Client> {
-  const s = getStore();
-  const client: Client = {
-    ...data,
-    id: uid("client"),
-    nutritionistId: await currentNid(),
-    createdAt: now(),
-  };
-  s.clients.push(client);
-  return client;
+export async function createClient(data: NewClient): Promise<Client> {
+  const client: Client = { ...data, id: newId("client"), nutritionistId: await nid(), createdAt: now() };
+  store().clients.push(client);
+  return clone(client);
 }
 
-export async function updateClient(
-  id: string,
-  patch: Partial<Client>,
-): Promise<Client | undefined> {
-  const s = getStore();
-  const c = s.clients.find((x) => x.id === id);
-  if (c) Object.assign(c, patch);
-  return c;
+export async function updateClient(id: string, patch: Partial<NewClient>) {
+  const c = await ownClient(id);
+  if (!c) return undefined;
+  Object.assign(c, patch);
+  return clone(c);
 }
 
 export async function deleteClient(id: string): Promise<void> {
-  const s = getStore();
+  if (!(await ownClient(id))) return;
+  const s = store();
+  const consultIds = new Set(s.consultations.filter((c) => c.clientId === id).map((c) => c.id));
   s.clients = s.clients.filter((c) => c.id !== id);
   s.consultations = s.consultations.filter((c) => c.clientId !== id);
   s.plans = s.plans.filter((p) => p.clientId !== id);
+  s.appointments = s.appointments.filter((a) => a.clientId !== id);
+  s.messages = s.messages.filter((m) => m.clientId !== id);
+  // Billing keeps its snapshot (client name) — like ON DELETE SET NULL.
+  for (const b of s.billingEntries) {
+    if (b.clientId === id) b.clientId = undefined;
+    if (b.consultationId && consultIds.has(b.consultationId)) b.consultationId = undefined;
+  }
 }
 
 // --- Consultations ---------------------------------------------------------
 export async function listConsultations(clientId: string): Promise<Consultation[]> {
-  return getStore()
-    .consultations.filter((c) => c.clientId === clientId)
-    .sort((a, b) => b.date.localeCompare(a.date));
+  if (!(await ownClient(clientId))) return [];
+  return clone(store().consultations.filter((c) => c.clientId === clientId).sort(byNewest));
 }
 
-export async function getConsultation(id: string): Promise<Consultation | undefined> {
-  return getStore().consultations.find((c) => c.id === id);
+export async function listAllConsultations(): Promise<Consultation[]> {
+  const own = await ownClientIds();
+  return clone(store().consultations.filter((c) => own.has(c.clientId)).sort(byNewest));
 }
 
-export async function getLastConsultation(
-  clientId: string,
-): Promise<Consultation | undefined> {
-  return (await listConsultations(clientId))[0];
+export async function getConsultation(id: string) {
+  const c = await findViaClient(store().consultations, id);
+  return c && clone(c);
 }
 
-/** Create a consultation, optionally pre-filling from the previous one. */
 export async function createConsultation(
   clientId: string,
-  opts: { duplicateLast?: boolean; consultationTypeId?: string } = {},
+  opts: { duplicateFrom?: Consultation; consultationTypeId?: string; date?: string } = {},
 ): Promise<Consultation> {
-  const s = getStore();
-  const existing = await listConsultations(clientId);
-  const last = opts.duplicateLast ? existing[0] : undefined;
+  const client = await ownClient(clientId);
+  if (!client) throw new Error("Client not found");
+  const s = store();
+  const existing = s.consultations.filter((c) => c.clientId === clientId);
+  const last = opts.duplicateFrom;
   const typeId = opts.consultationTypeId ?? last?.consultationTypeId;
   const consult: Consultation = {
-    id: uid("consult"),
+    id: newId("consult"),
     clientId,
-    date: new Date().toISOString().slice(0, 10),
+    date: opts.date ?? todayISO(),
     consultationNumber: existing.length + 1,
-    measurements: last
-      ? structuredClone(last.measurements)
-      : { perimeters: {}, skinfolds: {} },
-    // Carry the anamnese food-history shape forward when duplicating.
-    foodHistory: last ? structuredClone(last.foodHistory) : undefined,
+    measurements: last ? normalizeMeasurements(clone(last.measurements)) : emptyMeasurements(),
+    foodHistory: last?.foodHistory ? clone(last.foodHistory) : undefined,
+    energy: last?.energy ? { ...clone(last.energy), targetKcal: undefined } : undefined,
+    macros: last?.macros ? clone(last.macros) : undefined,
     notes: "",
     consultationTypeId: typeId,
     createdAt: now(),
@@ -260,14 +322,13 @@ export async function createConsultation(
 
   // Auto-create the billing entry for the held consultation.
   const types = await listConsultationTypes();
-  const type = typeId ? types.find((t) => t.id === typeId) : types[0];
-  const client = s.clients.find((c) => c.id === clientId);
-  s.billingEntries.unshift({
-    id: uid("bill"),
-    nutritionistId: await currentNid(),
+  const type = types.find((t) => t.id === typeId) ?? types[0];
+  s.billingEntries.push({
+    id: newId("bill"),
+    nutritionistId: client.nutritionistId,
     clientId,
     consultationId: consult.id,
-    clientName: client?.name ?? "",
+    clientName: client.name,
     typeName: type?.name ?? "",
     amount: type?.price ?? 0,
     date: consult.date,
@@ -275,88 +336,83 @@ export async function createConsultation(
     source: "auto",
     createdAt: now(),
   });
-  return consult;
+  return clone(consult);
 }
 
 export async function updateConsultation(
   id: string,
-  patch: Partial<Consultation>,
-): Promise<Consultation | undefined> {
-  const s = getStore();
-  const c = s.consultations.find((x) => x.id === id);
-  if (c) Object.assign(c, patch);
-  return c;
+  patch: Partial<Omit<Consultation, "id" | "clientId" | "createdAt">>,
+) {
+  const c = await findViaClient(store().consultations, id);
+  if (!c) return undefined;
+  Object.assign(c, patch);
+  if (patch.measurements) c.measurements = normalizeMeasurements(patch.measurements);
+  return clone(c);
+}
+
+export async function deleteConsultation(id: string): Promise<void> {
+  const c = await findViaClient(store().consultations, id);
+  if (!c) return;
+  const s = store();
+  s.consultations = s.consultations.filter((x) => x.id !== id);
+  s.plans = s.plans.filter((p) => p.consultationId !== id);
+  // An unpaid automatic charge for a deleted consultation is removed; paid ones stay.
+  s.billingEntries = s.billingEntries.filter(
+    (b) => !(b.consultationId === id && b.source === "auto" && b.status === "pending"),
+  );
+  for (const b of s.billingEntries) if (b.consultationId === id) b.consultationId = undefined;
 }
 
 // --- Consultation types & billing ------------------------------------------
 export async function listConsultationTypes(): Promise<ConsultationType[]> {
-  const nid = await currentNid();
-  const s = getStore();
-  let own = s.consultationTypes.filter((t) => t.nutritionistId === nid);
+  const me = await nid();
+  const s = store();
+  let own = s.consultationTypes.filter((t) => t.nutritionistId === me);
   if (own.length === 0) {
     own = DEFAULT_CONSULTATION_TYPES.map((t) => ({
-      id: uid("ctype"),
-      nutritionistId: nid,
+      id: newId("ctype"),
+      nutritionistId: me,
       name: t.name,
       price: t.price,
       isDefault: true,
     }));
     s.consultationTypes.push(...own);
   }
-  return own;
+  return clone(own);
 }
 
-export async function createConsultationType(data: {
-  name: string;
-  price: number;
-}): Promise<ConsultationType> {
-  const s = getStore();
-  const type: ConsultationType = {
-    id: uid("ctype"),
-    nutritionistId: await currentNid(),
-    name: data.name,
-    price: data.price,
-    isDefault: false,
-  };
-  s.consultationTypes.push(type);
-  return type;
+export async function createConsultationType(data: { name: string; price: number }) {
+  const type: ConsultationType = { id: newId("ctype"), nutritionistId: await nid(), ...data, isDefault: false };
+  store().consultationTypes.push(type);
+  return clone(type);
 }
 
-export async function updateConsultationType(
-  id: string,
-  patch: { name?: string; price?: number },
-): Promise<ConsultationType | undefined> {
-  const t = getStore().consultationTypes.find((x) => x.id === id);
-  if (t) Object.assign(t, patch);
-  return t;
+export async function updateConsultationType(id: string, patch: { name?: string; price?: number }) {
+  const t = await findOwned(store().consultationTypes, id);
+  if (!t) return undefined;
+  Object.assign(t, patch);
+  return clone(t);
 }
 
 export async function deleteConsultationType(id: string): Promise<void> {
-  const s = getStore();
+  if (!(await findOwned(store().consultationTypes, id))) return;
+  const s = store();
   s.consultationTypes = s.consultationTypes.filter((t) => t.id !== id);
+  for (const c of s.consultations) if (c.consultationTypeId === id) c.consultationTypeId = undefined;
 }
 
 export async function listBillingEntries(): Promise<BillingEntry[]> {
-  const nid = await currentNid();
-  return getStore()
-    .billingEntries.filter((b) => b.nutritionistId === nid)
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const me = await nid();
+  return clone(store().billingEntries.filter((b) => b.nutritionistId === me).sort(byNewest));
 }
 
-export async function createBillingEntry(data: {
-  clientId?: string;
-  clientName: string;
-  typeName: string;
-  amount: number;
-  date: string;
-  status?: "pending" | "paid";
-  notes?: string;
-}): Promise<BillingEntry> {
-  const s = getStore();
+export async function createBillingEntry(data: NewBillingEntry): Promise<BillingEntry> {
+  const me = await nid();
+  const clientId = data.clientId && (await ownClient(data.clientId)) ? data.clientId : undefined;
   const entry: BillingEntry = {
-    id: uid("bill"),
-    nutritionistId: await currentNid(),
-    clientId: data.clientId,
+    id: newId("bill"),
+    nutritionistId: me,
+    clientId,
     clientName: data.clientName,
     typeName: data.typeName,
     amount: data.amount,
@@ -366,49 +422,51 @@ export async function createBillingEntry(data: {
     source: "manual",
     createdAt: now(),
   };
-  s.billingEntries.unshift(entry);
-  return entry;
+  store().billingEntries.push(entry);
+  return clone(entry);
 }
 
-export async function updateBillingEntry(
-  id: string,
-  patch: Partial<Pick<BillingEntry, "clientName" | "typeName" | "amount" | "date" | "status" | "notes">>,
-): Promise<BillingEntry | undefined> {
-  const b = getStore().billingEntries.find((x) => x.id === id);
-  if (b) Object.assign(b, patch);
-  return b;
+export async function updateBillingEntry(id: string, patch: BillingPatch) {
+  const b = await findOwned(store().billingEntries, id);
+  if (!b) return undefined;
+  Object.assign(b, patch);
+  return clone(b);
 }
 
 export async function deleteBillingEntry(id: string): Promise<void> {
-  const s = getStore();
+  if (!(await findOwned(store().billingEntries, id))) return;
+  const s = store();
   s.billingEntries = s.billingEntries.filter((b) => b.id !== id);
 }
 
 // --- Plans -----------------------------------------------------------------
 export async function listPlans(clientId?: string): Promise<MealPlan[]> {
-  const all = getStore().plans;
   const own = await ownClientIds();
-  const filtered = clientId
-    ? all.filter((p) => p.clientId === clientId)
-    : all.filter((p) => own.has(p.clientId));
-  return [...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return clone(
+    store()
+      .plans.filter((p) => own.has(p.clientId) && (!clientId || p.clientId === clientId))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+  );
 }
 
-export async function getPlan(id: string): Promise<MealPlan | undefined> {
-  return getStore().plans.find((p) => p.id === id);
+export async function getPlan(id: string) {
+  const p = await findViaClient(store().plans, id);
+  return p && clone(p);
 }
 
-export async function createPlan(
-  data: Partial<MealPlan> & { clientId: string },
-): Promise<MealPlan> {
-  const s = getStore();
+export async function createPlan(data: Partial<MealPlan> & { clientId: string }): Promise<MealPlan> {
+  if (!(await ownClient(data.clientId))) throw new Error("Client not found");
+  const s = store();
+  const consultation = data.consultationId
+    ? s.consultations.find((c) => c.id === data.consultationId && c.clientId === data.clientId)
+    : undefined;
   const plan: MealPlan = {
-    id: uid("plan"),
+    id: newId("plan"),
     clientId: data.clientId,
-    consultationId: data.consultationId,
+    consultationId: consultation?.id,
     language: data.language ?? "pt-PT",
     pdfTemplateId: data.pdfTemplateId ?? "classic",
-    meals: data.meals ?? [],
+    meals: clone(data.meals ?? []),
     supplementation: data.supplementation ?? "",
     notes: data.notes ?? "",
     motivationalQuote: data.motivationalQuote ?? "",
@@ -417,164 +475,146 @@ export async function createPlan(
     updatedAt: now(),
   };
   s.plans.push(plan);
-  if (plan.consultationId) {
-    const c = s.consultations.find((x) => x.id === plan.consultationId);
-    if (c) c.planId = plan.id;
-  }
-  return plan;
+  if (consultation) consultation.planId = plan.id;
+  return clone(plan);
 }
 
 export async function updatePlan(
   id: string,
-  patch: Partial<MealPlan>,
-): Promise<MealPlan | undefined> {
-  const s = getStore();
-  const p = s.plans.find((x) => x.id === id);
-  if (p) Object.assign(p, patch, { updatedAt: now() });
-  return p;
+  patch: Partial<Omit<MealPlan, "id" | "clientId" | "createdAt" | "updatedAt">>,
+) {
+  const p = await findViaClient(store().plans, id);
+  if (!p) return undefined;
+  Object.assign(p, clone(patch), { updatedAt: now() });
+  return clone(p);
 }
 
-/** Deep-duplicate a plan (smart duplication) into a fresh editable plan. */
-export async function duplicatePlan(
-  id: string,
-  overrides: Partial<MealPlan> = {},
-): Promise<MealPlan | undefined> {
-  const src = await getPlan(id);
-  if (!src) return undefined;
-  const clone = structuredClone(src);
-  return createPlan({ ...clone, ...overrides, consultationId: overrides.consultationId });
+export async function deletePlan(id: string): Promise<void> {
+  if (!(await findViaClient(store().plans, id))) return;
+  const s = store();
+  s.plans = s.plans.filter((p) => p.id !== id);
+  for (const c of s.consultations) if (c.planId === id) c.planId = undefined;
 }
 
-// --- Foods database (BOO-57) -----------------------------------------------
+// --- Foods & recipes -------------------------------------------------------
 export async function listFoods(opts: { includeArchived?: boolean } = {}): Promise<DbFood[]> {
-  const nid = await currentNid();
-  return getStore()
-    .foods.filter((f) => f.nutritionistId === nid && (opts.includeArchived || !f.archived))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const me = await nid();
+  return clone(
+    store()
+      .foods.filter((f) => f.nutritionistId === me && (opts.includeArchived || !f.archived))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  );
 }
 
-export async function getFood(id: string): Promise<DbFood | undefined> {
-  return getStore().foods.find((f) => f.id === id);
+export async function createFood(data: NewFood): Promise<DbFood> {
+  const f: DbFood = { ...data, archived: data.archived ?? false, id: newId("food"), nutritionistId: await nid(), createdAt: now() };
+  store().foods.push(f);
+  return clone(f);
 }
 
-export async function createFood(
-  data: Omit<DbFood, "id" | "nutritionistId" | "createdAt" | "archived"> &
-    Partial<Pick<DbFood, "archived">>,
-): Promise<DbFood> {
-  const s = getStore();
-  const f: DbFood = {
-    ...data,
-    archived: data.archived ?? false,
-    id: uid("food"),
-    nutritionistId: await currentNid(),
-    createdAt: now(),
-  };
-  s.foods.push(f);
-  return f;
+export async function updateFood(id: string, patch: Partial<NewFood>) {
+  const f = await findOwned(store().foods, id);
+  if (!f) return undefined;
+  Object.assign(f, patch);
+  return clone(f);
 }
 
-export async function updateFood(id: string, patch: Partial<DbFood>): Promise<DbFood | undefined> {
-  const f = getStore().foods.find((x) => x.id === id);
-  if (f) Object.assign(f, patch, { id: f.id, nutritionistId: f.nutritionistId });
-  return f;
-}
-
-export async function deleteFood(id: string): Promise<void> {
-  const s = getStore();
-  s.foods = s.foods.filter((f) => f.id !== id);
-}
-
-// --- Recipes (BOO-58) ------------------------------------------------------
 export async function listRecipes(): Promise<Recipe[]> {
-  const nid = await currentNid();
-  return getStore()
-    .recipes.filter((r) => r.nutritionistId === nid)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const me = await nid();
+  return clone(
+    store()
+      .recipes.filter((r) => r.nutritionistId === me)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  );
 }
 
-export async function getRecipe(id: string): Promise<Recipe | undefined> {
-  return getStore().recipes.find((r) => r.id === id);
+export async function createRecipe(data: NewRecipe): Promise<Recipe> {
+  const r: Recipe = { ...clone(data), id: newId("recipe"), nutritionistId: await nid(), createdAt: now() };
+  store().recipes.push(r);
+  return clone(r);
 }
 
-export async function createRecipe(
-  data: Omit<Recipe, "id" | "nutritionistId" | "createdAt">,
-): Promise<Recipe> {
-  const s = getStore();
-  const r: Recipe = { ...data, id: uid("recipe"), nutritionistId: await currentNid(), createdAt: now() };
-  s.recipes.push(r);
-  return r;
-}
-
-export async function updateRecipe(id: string, patch: Partial<Recipe>): Promise<Recipe | undefined> {
-  const r = getStore().recipes.find((x) => x.id === id);
-  if (r) Object.assign(r, patch, { id: r.id, nutritionistId: r.nutritionistId });
-  return r;
+export async function updateRecipe(id: string, patch: Partial<NewRecipe>) {
+  const r = await findOwned(store().recipes, id);
+  if (!r) return undefined;
+  Object.assign(r, clone(patch));
+  return clone(r);
 }
 
 export async function deleteRecipe(id: string): Promise<void> {
-  const s = getStore();
+  if (!(await findOwned(store().recipes, id))) return;
+  const s = store();
   s.recipes = s.recipes.filter((r) => r.id !== id);
 }
 
-// --- Recommendations -------------------------------------------------------
+// --- Recommendations & templates ------------------------------------------
 export async function listRecommendations(): Promise<Recommendation[]> {
-  const nid = await currentNid();
-  return getStore().recommendations.filter((r) => r.nutritionistId === nid);
+  const me = await nid();
+  return clone(store().recommendations.filter((r) => r.nutritionistId === me));
 }
 
-export async function createRecommendation(
-  data: Omit<Recommendation, "id" | "nutritionistId">,
-): Promise<Recommendation> {
-  const s = getStore();
-  const rec: Recommendation = { ...data, id: uid("rec"), nutritionistId: await currentNid() };
-  s.recommendations.push(rec);
-  return rec;
+export async function createRecommendation(data: Omit<Recommendation, "id" | "nutritionistId">) {
+  const rec: Recommendation = { ...clone(data), id: newId("rec"), nutritionistId: await nid() };
+  store().recommendations.push(rec);
+  return clone(rec);
 }
 
-// --- Templates -------------------------------------------------------------
+export async function updateRecommendation(id: string, patch: Partial<Omit<Recommendation, "id" | "nutritionistId">>) {
+  const r = await findOwned(store().recommendations, id);
+  if (!r) return undefined;
+  Object.assign(r, clone(patch));
+  return clone(r);
+}
+
+export async function deleteRecommendation(id: string): Promise<void> {
+  if (!(await findOwned(store().recommendations, id))) return;
+  const s = store();
+  s.recommendations = s.recommendations.filter((r) => r.id !== id);
+}
+
 export async function listTemplates(): Promise<PlanTemplate[]> {
-  const nid = await currentNid();
-  return getStore().templates.filter((t) => t.nutritionistId === nid);
+  const me = await nid();
+  return clone(store().templates.filter((t) => t.nutritionistId === me));
 }
 
-export async function getTemplate(id: string): Promise<PlanTemplate | undefined> {
-  return getStore().templates.find((t) => t.id === id);
+export async function createTemplate(data: Omit<PlanTemplate, "id" | "nutritionistId">) {
+  const tpl: PlanTemplate = { ...clone(data), id: newId("tpl"), nutritionistId: await nid() };
+  store().templates.push(tpl);
+  return clone(tpl);
 }
 
-export async function createTemplate(
-  data: Omit<PlanTemplate, "id" | "nutritionistId">,
-): Promise<PlanTemplate> {
-  const s = getStore();
-  const tpl: PlanTemplate = { ...data, id: uid("tpl"), nutritionistId: await currentNid() };
-  s.templates.push(tpl);
-  return tpl;
+export async function updateTemplate(id: string, patch: Partial<Omit<PlanTemplate, "id" | "nutritionistId">>) {
+  const t = await findOwned(store().templates, id);
+  if (!t) return undefined;
+  Object.assign(t, clone(patch));
+  return clone(t);
 }
 
-// --- Appointments ----------------------------------------------------------
-/** Appointments for the current tenant (UI). */
+export async function deleteTemplate(id: string): Promise<void> {
+  if (!(await findOwned(store().templates, id))) return;
+  const s = store();
+  s.templates = s.templates.filter((t) => t.id !== id);
+}
+
+// --- Appointments & SMS ----------------------------------------------------
 export async function listAppointments(): Promise<Appointment[]> {
   const own = await ownClientIds();
-  return getStore()
-    .appointments.filter((a) => own.has(a.clientId))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return clone(
+    store()
+      .appointments.filter((a) => own.has(a.clientId))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+  );
 }
 
-/** All appointments across tenants — used by the reminder cron only. */
-export async function listAllAppointments(): Promise<Appointment[]> {
-  return [...getStore().appointments].sort((a, b) => a.date.localeCompare(b.date));
+export async function getAppointment(id: string) {
+  const a = await findViaClient(store().appointments, id);
+  return a && clone(a);
 }
 
-export async function getAppointment(id: string): Promise<Appointment | undefined> {
-  return getStore().appointments.find((a) => a.id === id);
-}
-
-export async function createAppointment(
-  data: Omit<Appointment, "id" | "status" | "reminderChannel"> &
-    Partial<Pick<Appointment, "status" | "reminderChannel">>,
-): Promise<Appointment> {
-  const s = getStore();
+export async function createAppointment(data: NewAppointment): Promise<Appointment> {
+  if (!(await ownClient(data.clientId))) throw new Error("Client not found");
   const appt: Appointment = {
-    id: uid("appt"),
+    id: newId("appt"),
     clientId: data.clientId,
     date: data.date,
     durationMin: data.durationMin ?? 45,
@@ -584,123 +624,109 @@ export async function createAppointment(
     reminderChannel: "sms",
     reminderSentAt: data.reminderSentAt,
   };
-  s.appointments.push(appt);
-  return appt;
+  store().appointments.push(appt);
+  return clone(appt);
 }
 
-export async function updateAppointment(
-  id: string,
-  patch: Partial<Appointment>,
-): Promise<Appointment | undefined> {
-  const s = getStore();
-  const a = s.appointments.find((x) => x.id === id);
-  if (a) Object.assign(a, patch);
-  return a;
+export async function updateAppointment(id: string, patch: Partial<Omit<Appointment, "id">>) {
+  const a = await findViaClient(store().appointments, id);
+  if (!a) return undefined;
+  if (patch.clientId && !(await ownClient(patch.clientId))) return undefined;
+  Object.assign(a, patch);
+  return clone(a);
 }
 
-export async function markReminderSent(id: string, when: string): Promise<void> {
-  const a = getStore().appointments.find((x) => x.id === id);
-  if (a) a.reminderSentAt = when;
-}
-
-// --- Uploaded PDF templates ------------------------------------------------
-export async function listPdfTemplates(): Promise<PdfTemplateFile[]> {
-  const nid = await currentNid();
-  return getStore().pdfTemplates.filter((t) => t.nutritionistId === nid);
-}
-
-export async function getPdfTemplate(id: string): Promise<PdfTemplateFile | undefined> {
-  return getStore().pdfTemplates.find((t) => t.id === id);
-}
-
-export async function createPdfTemplate(data: {
-  name: string;
-  storagePath: string;
-}): Promise<PdfTemplateFile> {
-  const s = getStore();
-  const tpl: PdfTemplateFile = {
-    id: uid("pdftpl"),
-    nutritionistId: await currentNid(),
-    name: data.name,
-    storagePath: data.storagePath,
-    createdAt: now(),
-  };
-  s.pdfTemplates.push(tpl);
-  return tpl;
-}
-
-export async function deletePdfTemplate(id: string): Promise<void> {
-  const s = getStore();
-  s.pdfTemplates = s.pdfTemplates.filter((t) => t.id !== id);
-}
-
-// --- SMS outbox ------------------------------------------------------------
-export async function addSentMessage(msg: SentMessage): Promise<void> {
-  getStore().messages.unshift(msg);
+export async function deleteAppointment(id: string): Promise<void> {
+  if (!(await findViaClient(store().appointments, id))) return;
+  const s = store();
+  s.appointments = s.appointments.filter((a) => a.id !== id);
+  s.messages = s.messages.filter((m) => m.appointmentId !== id);
 }
 
 export async function listSentMessages(): Promise<SentMessage[]> {
-  return getStore().messages;
-}
-
-export function newMessageId(): string {
-  return uid("msg");
-}
-
-// --- Dashboard aggregates --------------------------------------------------
-export async function getDashboardStats() {
-  const s = getStore();
   const own = await ownClientIds();
-  const ownClients = s.clients.filter((c) => own.has(c.id));
-  const consultations = s.consultations
-    .filter((c) => own.has(c.clientId))
-    .sort((a, b) => b.date.localeCompare(a.date));
-  const plans = s.plans.filter((p) => own.has(p.clientId));
+  return clone(
+    store()
+      .messages.filter((m) => own.has(m.clientId))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  );
+}
 
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const inThisMonth = (iso: string) => new Date(iso) >= monthStart;
-
-  const consultationsThisMonth = consultations.filter((c) => inThisMonth(c.date)).length;
-  const newClientsThisMonth = ownClients.filter((c) => inThisMonth(c.createdAt)).length;
-
-  const upcoming = s.appointments
-    .filter((a) => own.has(a.clientId) && a.status === "scheduled" && new Date(a.date) >= now)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
+function rawReminderStore(scope: () => Promise<Set<string> | null>): ReminderStore {
+  const allowed = async (clientId: string) => {
+    const own = await scope();
+    return own === null || own.has(clientId);
+  };
   return {
-    activeClients: own.size,
-    totalConsultations: consultations.length,
-    consultationsThisMonth,
-    newClientsThisMonth,
-    plansGenerated: plans.length,
-    upcomingCount: upcoming.length,
-    recentConsultationList: consultations.slice(0, 6).map((c) => ({
-      consultation: c,
-      client: s.clients.find((cl) => cl.id === c.clientId),
-      bmi: computeBmi(c.measurements),
-    })),
-    upcomingList: upcoming.slice(0, 5).map((a) => ({
-      appointment: a,
-      client: s.clients.find((cl) => cl.id === a.clientId),
-    })),
+    async listAppointments() {
+      const own = await scope();
+      return clone(store().appointments.filter((a) => own === null || own.has(a.clientId)));
+    },
+    async getClient(id) {
+      const c = store().clients.find((x) => x.id === id);
+      return c && (await allowed(c.id)) ? clone(c) : undefined;
+    },
+    async getProfile(id) {
+      const p = store().profiles.find((x) => x.id === id);
+      return p && clone(p);
+    },
+    async markReminderSent(id, when) {
+      const a = store().appointments.find((x) => x.id === id);
+      if (a && (await allowed(a.clientId))) a.reminderSentAt = when;
+    },
+    async addSentMessage(msg) {
+      if (await allowed(msg.clientId)) store().messages.push({ ...msg, id: newId("msg") });
+    },
   };
 }
 
-/** Autocomplete suggestions from a client's history (meal contents seen before). */
-export async function getMealSuggestions(clientId: string): Promise<string[]> {
-  const plans = await listPlans(clientId);
-  const set = new Set<string>();
-  for (const p of plans) {
-    for (const meal of p.meals) {
-      for (const opt of meal.options) {
-        if (opt.content.trim() && opt.content.length < 120) set.add(opt.content.trim());
-      }
-    }
-  }
-  return [...set].slice(0, 20);
+export function tenantReminderStore(): ReminderStore {
+  return rawReminderStore(ownClientIds);
 }
 
-export function blankMeal(name = ""): Meal {
-  return { id: uid("meal"), name, options: [{ id: uid("opt"), content: "" }] };
+export function cronReminderStore(): ReminderStore {
+  return rawReminderStore(async () => null);
+}
+
+// --- Uploaded PDF templates & files ----------------------------------------
+export async function listPdfTemplates(): Promise<PdfTemplateFile[]> {
+  const me = await nid();
+  return clone(store().pdfTemplates.filter((t) => t.nutritionistId === me));
+}
+
+export async function getPdfTemplate(id: string) {
+  const t = await findOwned(store().pdfTemplates, id);
+  return t && clone(t);
+}
+
+export async function createPdfTemplate(data: { name: string; storagePath: string }) {
+  const tpl: PdfTemplateFile = { id: newId("pdftpl"), nutritionistId: await nid(), ...data, createdAt: now() };
+  store().pdfTemplates.push(tpl);
+  return clone(tpl);
+}
+
+export async function deletePdfTemplate(id: string): Promise<void> {
+  const t = await findOwned(store().pdfTemplates, id);
+  if (!t) return;
+  const s = store();
+  s.pdfTemplates = s.pdfTemplates.filter((x) => x.id !== id);
+  s.files.delete(t.storagePath);
+  for (const p of s.plans) if (p.pdfTemplateId === id) p.pdfTemplateId = "classic";
+}
+
+export async function putFile(kind: FileKind, bytes: Uint8Array, contentType: string, ext: string) {
+  const key = `${await nid()}/${kind}-${newId("file")}.${ext}`;
+  store().files.set(key, { bytes, contentType });
+  return key;
+}
+
+export async function getFile(key: string) {
+  const me = await nid();
+  if (!key.startsWith(`${me}/`)) return undefined;
+  return store().files.get(key);
+}
+
+export async function deleteFile(key: string): Promise<void> {
+  const me = await nid();
+  if (key.startsWith(`${me}/`)) store().files.delete(key);
 }

@@ -199,23 +199,65 @@ export const GEB_FORMULAS: GebFormula[] = [
       ok(w, h) ? 8.7 * w! - 25 * m(h)! + 865 : undefined,
   },
   {
+    key: "mifflin_st_jeor",
+    label: "Mifflin-St Jeor",
+    group: "adult",
+    minAge: 18,
+    compute: ({ sex, weightKg: w, heightCm: h, ageYears: a }) =>
+      ok(w, h, a) && sex ? 10 * w! + 6.25 * h! - 5 * a! + (sex === "male" ? 5 : -161) : undefined,
+  },
+  {
+    key: "ten_haaf",
+    label: "Ten Haaf (Atletas)",
+    group: "adult",
+    minAge: 18,
+    // Ten Haaf & Weijs 2014 — weight-based, validated in athletes.
+    compute: ({ sex, weightKg: w, heightCm: h, ageYears: a }) =>
+      ok(w, h, a) && sex
+        ? 11.936 * w! + 587.728 * m(h)! - 8.129 * a! + 191.027 * (sex === "male" ? 1 : 0) + 29.279
+        : undefined,
+  },
+  // --- Fat-free-mass based (need lean mass or % body fat) ------------------
+  {
     key: "cunningham",
     label: "Cunningham (MLG)",
     group: "adult",
     minAge: 18,
     compute: ({ fatFreeMassKg: ffm }) => (ok(ffm) ? 21.6 * ffm! + 370 : undefined),
   },
+  {
+    key: "ten_haaf_ffm",
+    label: "Ten Haaf (MLG)",
+    group: "adult",
+    minAge: 18,
+    compute: ({ fatFreeMassKg: ffm }) => (ok(ffm) ? 22.771 * ffm! + 484.264 : undefined),
+  },
+  {
+    key: "mifflin_ffm",
+    label: "Mifflin-St Jeor (MLG)",
+    group: "adult",
+    minAge: 18,
+    compute: ({ fatFreeMassKg: ffm }) => (ok(ffm) ? 19.7 * ffm! + 413 : undefined),
+  },
 ];
+
+/** Formulas that need fat-free mass rather than weight/height/age. */
+export const FFM_FORMULAS = new Set(["cunningham", "ten_haaf_ffm", "mifflin_ffm"]);
 
 export function getGebFormula(key: string | undefined): GebFormula | undefined {
   return GEB_FORMULAS.find((f) => f.key === key);
 }
 
-/** Pick the most appropriate GEB formula from sex/age (Harris-Benedict default for adults). */
-export function suggestGebFormula(i: EnergyInput): string | undefined {
+/**
+ * Pick the most appropriate GEB formula from sex/age/athlete status.
+ * Adults default to Harris-Benedict (as in the Excel); athletes to Ten Haaf.
+ */
+export function suggestGebFormula(i: EnergyInput & { athlete?: boolean }): string | undefined {
   const { sex, ageYears: a } = i;
-  if (!a) return sex === "male" ? "harris_benedict_men" : "harris_benedict_women";
-  if (a >= 18) return sex === "male" ? "harris_benedict_men" : "harris_benedict_women";
+  if (!a || a >= 18) {
+    if (i.athlete) return "ten_haaf";
+    return sex === "male" ? "harris_benedict_men" : "harris_benedict_women";
+  }
   // Young
   if (a < 10) return sex === "male" ? "schofield_3_10_boy" : "schofield_3_10_girl";
   return sex === "male" ? "schofield_10_18_boy" : "schofield_10_18_girl";
@@ -240,6 +282,14 @@ export const PAL_OPTIONS: { value: number; labelKey: string }[] = [
 export const DEFAULT_PAL = 1.375;
 
 /** GET = GEB × PAL × stress. */
+/** Formulas applicable to this person (sex + age range); others are still selectable. */
+export function isApplicable(f: GebFormula, i: EnergyInput): boolean {
+  if (f.sex && i.sex && f.sex !== i.sex) return false;
+  const a = i.ageYears;
+  if (a != null && ((f.minAge != null && a < f.minAge) || (f.maxAge != null && a > f.maxAge))) return false;
+  return true;
+}
+
 export function get(
   gebValue: number | undefined,
   pal: number = DEFAULT_PAL,

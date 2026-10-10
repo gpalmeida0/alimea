@@ -1,23 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import {
+  getAuthNid,
   getClient,
   getConsultation,
   getPdfTemplate,
   getPlan,
-  getProfileById,
+  getProfile,
   listConsultations,
 } from "@/lib/data/repo";
+import { loadFile } from "@/lib/files";
 import { generatePlanPdf } from "@/lib/pdf/generate";
 import type { PlanDocumentData, PlanLanguage } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ planId: string }> },
-) {
+const DEFAULT_LOGO = "/pdf-assets/logo.png";
+
+/** ASCII fallback + RFC 5987 UTF-8 filename (names with accents, etc.). */
+function contentDisposition(type: "inline" | "attachment", filename: string): string {
+  const ascii = filename.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "-");
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ planId: string }> }) {
+  if (!(await getAuthNid())) return new NextResponse("Unauthorized", { status: 401 });
+
   const { planId } = await params;
   const plan = await getPlan(planId);
   if (!plan) return new NextResponse("Plan not found", { status: 404 });
@@ -25,16 +33,11 @@ export async function GET(
   const langParam = req.nextUrl.searchParams.get("lang");
   const language: PlanLanguage = langParam === "en" || langParam === "pt-PT" ? langParam : plan.language;
 
-  const client = await getClient(plan.clientId);
+  const [client, profile] = await Promise.all([getClient(plan.clientId), getProfile()]);
   if (!client) return new NextResponse("Client not found", { status: 404 });
-  const profile = await getProfileById(client.nutritionistId);
-  if (!profile) return new NextResponse("Profile not found", { status: 404 });
 
-  const consultation = plan.consultationId
-    ? await getConsultation(plan.consultationId)
-    : undefined;
-
-  // Find the consultation immediately before this one for the comparison column.
+  const consultation = plan.consultationId ? await getConsultation(plan.consultationId) : undefined;
+  // The consultation immediately before this one feeds the comparison column.
   let previousConsultation;
   if (consultation) {
     const all = await listConsultations(client.id);
@@ -51,28 +54,26 @@ export async function GET(
     language,
   };
 
-  // If the plan uses an uploaded custom PDF template, load its bytes.
   let baseTemplate: Uint8Array | undefined;
   if (plan.pdfTemplateId && plan.pdfTemplateId !== "classic") {
     const tpl = await getPdfTemplate(plan.pdfTemplateId);
-    if (tpl) {
-      try {
-        baseTemplate = await readFile(join(process.cwd(), "public", tpl.storagePath.replace(/^\//, "")));
-      } catch {
-        baseTemplate = undefined;
-      }
-    }
+    baseTemplate = tpl ? (await loadFile(tpl.storagePath))?.bytes : undefined;
   }
+  const logo = (await loadFile(profile.logoUrl || DEFAULT_LOGO)) ?? (await loadFile(DEFAULT_LOGO));
 
-  const bytes = await generatePlanPdf(data, { baseTemplate });
-  const filename = `${language === "en" ? "Meal-Plan" : "Plano-Alimentar"}-${client.name.replace(/\s+/g, "-")}.pdf`;
-  const inline = req.nextUrl.searchParams.get("inline") === "1";
-
-  return new NextResponse(Buffer.from(bytes), {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${filename}"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  try {
+    const bytes = await generatePlanPdf(data, { baseTemplate, logo: logo?.bytes });
+    const filename = `${language === "en" ? "Meal-Plan" : "Plano-Alimentar"}-${client.name.trim().replace(/\s+/g, "-")}.pdf`;
+    const inline = req.nextUrl.searchParams.get("inline") === "1";
+    return new NextResponse(Buffer.from(bytes), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": contentDisposition(inline ? "inline" : "attachment", filename),
+        "Cache-Control": "private, no-store",
+      },
+    });
+  } catch (e) {
+    console.error("[alimea] PDF generation failed", e);
+    return new NextResponse("PDF generation failed", { status: 500 });
+  }
 }

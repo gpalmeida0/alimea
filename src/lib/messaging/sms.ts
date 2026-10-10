@@ -21,7 +21,7 @@ export interface SmsProvider {
 const logProvider: SmsProvider = {
   name: "preview",
   async send(to, body) {
-    console.info(`[SMS preview] → ${to}: ${body}`);
+    if (process.env.NODE_ENV !== "production") console.info(`[SMS preview] → ${to}: ${body}`);
     return { status: "simulated", provider: "preview" };
   },
 };
@@ -43,11 +43,18 @@ function twilioProvider(): SmsProvider {
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body: new URLSearchParams({ To: to, From: from, Body: body }),
+            signal: AbortSignal.timeout(15_000),
           },
         );
         if (!res.ok) {
           const text = await res.text();
-          return { status: "failed", provider: "twilio", error: text.slice(0, 200) };
+          let message = text.slice(0, 200);
+          try {
+            message = (JSON.parse(text) as { message?: string }).message ?? message;
+          } catch {
+            /* non-JSON error body */
+          }
+          return { status: "failed", provider: "twilio", error: message };
         }
         return { status: "sent", provider: "twilio" };
       } catch (e) {

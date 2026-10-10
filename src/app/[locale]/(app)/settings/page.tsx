@@ -1,112 +1,63 @@
-import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { getProfile, listPdfTemplates } from "@/lib/data/repo";
+import { getLoginEmail, getMfaStatus, getProfile, listPdfTemplates, backend } from "@/lib/data/repo";
+import { fileUrl } from "@/lib/files";
+import { isSmsConfigured } from "@/lib/messaging/sms";
+import { isAiConfigured } from "@/lib/ai/assistant";
 import { PageHeader } from "@/components/ui/misc";
+import { SettingsForm } from "@/components/settings-form";
+import { SecuritySettings } from "@/components/security-settings";
 import { PdfTemplatesManager } from "@/components/pdf-templates-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Label } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { updateProfileAction } from "@/app/actions";
 
-export default async function SettingsPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>;
-}) {
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
+  const t = await getTranslations({ locale: (await params).locale, namespace: "settings" });
+  return { title: t("title") };
+}
+
+export default async function SettingsPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("settings");
-  const tcom = await getTranslations("common");
-  const [profile, pdfTemplates] = await Promise.all([getProfile(), listPdfTemplates()]);
-  const action = updateProfileAction.bind(null, locale);
+  const [profile, pdfTemplates, loginEmail, mfa] = await Promise.all([
+    getProfile(),
+    listPdfTemplates(),
+    getLoginEmail(),
+    getMfaStatus(),
+  ]);
+
+  const integrations = [
+    { key: "database", ok: backend === "supabase" },
+    { key: "sms", ok: isSmsConfigured() },
+    { key: "ai", ok: isAiConfigured() },
+  ];
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader title={t("title")} />
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader title={t("title")} subtitle={t("subtitle")} />
+      <SettingsForm profile={profile} logoSrc={fileUrl(profile.logoUrl)} />
+      <SecuritySettings loginEmail={loginEmail ?? ""} mfa={{ supported: mfa.supported, enabled: mfa.enabled }} />
+      <PdfTemplatesManager templates={pdfTemplates.map((p) => ({ id: p.id, name: p.name, url: fileUrl(p.storagePath)! }))} />
       <Card>
-        <CardHeader className="flex-row items-center gap-4">
-          {profile.logoUrl && (
-            <Image src={profile.logoUrl} alt="logo" width={56} height={56} className="rounded-full" />
-          )}
-          <CardTitle>{t("profile")}</CardTitle>
+        <CardHeader>
+          <CardTitle className="text-lg">{t("integrations")}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t("integrationsHint")}</p>
         </CardHeader>
-        <CardContent>
-          <form action={action} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t("professionalName")} name="name" defaultValue={profile.name} />
-              <Field label={t("credential")} name="credential" defaultValue={profile.credential} />
-              <Field label="Email" name="email" type="email" defaultValue={profile.email} />
-              <Field label={t("instagram")} name="instagram" defaultValue={profile.instagram ?? ""} />
-              <Field label={t("phone")} name="phone" defaultValue={profile.phone ?? ""} />
-              <Field label={t("address")} name="address" defaultValue={profile.address ?? ""} />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="interfaceLanguage">{t("interfaceLanguage")}</Label>
-              <select
-                id="interfaceLanguage"
-                name="interfaceLanguage"
-                defaultValue={profile.interfaceLanguage}
-                className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-sm sm:w-48"
-              >
-                <option value="pt-PT">Português (Portugal)</option>
-                <option value="en">English</option>
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="logo">{t("logo")}</Label>
-              <div className="flex items-center gap-3">
-                {profile.logoUrl && (
-                  <Image
-                    src={profile.logoUrl}
-                    alt="logo"
-                    width={48}
-                    height={48}
-                    className="rounded-full border border-border"
-                  />
-                )}
-                <Input
-                  id="logo"
-                  name="logo"
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  className="cursor-pointer file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1 file:text-sm"
-                />
+        <CardContent className="divide-y divide-border">
+          {integrations.map((i) => (
+            <div key={i.key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+              <div>
+                <p className="text-sm font-medium">{t(`integration.${i.key}.title`)}</p>
+                <p className="text-xs text-muted-foreground">{t(`integration.${i.key}.${i.ok ? "on" : "off"}`)}</p>
               </div>
-              <p className="text-xs text-muted-foreground">{t("logoHint")}</p>
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${i.ok ? "bg-brand-50 text-brand-700" : "bg-muted text-muted-foreground"}`}
+              >
+                {i.ok ? t("active") : t("inactive")}
+              </span>
             </div>
-
-            <p className="text-xs text-muted-foreground">{t("brandingNote")}</p>
-            <div className="flex justify-end">
-              <Button type="submit">{tcom("save")}</Button>
-            </div>
-          </form>
+          ))}
         </CardContent>
       </Card>
-
-      <PdfTemplatesManager
-        templates={pdfTemplates.map((p) => ({ id: p.id, name: p.name, storagePath: p.storagePath }))}
-      />
-    </div>
-  );
-}
-
-function Field({
-  label,
-  name,
-  defaultValue,
-  type = "text",
-}: {
-  label: string;
-  name: string;
-  defaultValue: string;
-  type?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} type={type} defaultValue={defaultValue} />
     </div>
   );
 }

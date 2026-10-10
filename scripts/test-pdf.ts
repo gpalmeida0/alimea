@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { generatePlanPdf } from "@/lib/pdf/generate";
 import { seedClients, seedConsultations, seedPlans, seedProfile } from "@/lib/data/seed";
 import type { PlanDocumentData, PlanLanguage } from "@/lib/types";
@@ -13,8 +13,9 @@ async function main() {
     plan: { ...seedPlans[1], language: lang },
     language: lang,
   };
-  const bytes = await generatePlanPdf(data);
-  const out = `/tmp/alimea-out-${lang}.pdf`;
+  const logo = new Uint8Array(readFileSync("public/pdf-assets/logo.png"));
+  const bytes = await generatePlanPdf(data, { logo });
+  const out = process.argv[3] ?? `/tmp/alimea-out-${lang}.pdf`;
   writeFileSync(out, bytes);
   console.log("wrote", out, bytes.length, "bytes");
 }

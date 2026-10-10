@@ -1,89 +1,82 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Pencil, X, Loader2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { deleteClientAction, updateClientAction } from "@/app/actions";
+import type { Client } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Input, Textarea, Label } from "@/components/ui/input";
-import { updateClientAction } from "@/app/actions";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import { useFeedback } from "@/components/ui/feedback";
+import { useServerAction } from "@/hooks/use-server-action";
+import { ClientFields } from "./client-form";
 
-interface Props {
-  clientId: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  goals?: string;
-  notes?: string;
-}
-
-export function ClientEditButton(props: Props) {
+export function ClientActions({ client }: { client: Client }) {
   const t = useTranslations("clients");
   const tc = useTranslations("common");
   const locale = useLocale();
-  const router = useRouter();
+  const { confirm } = useFeedback();
+  const { run, pending } = useServerAction();
   const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
+  const [menu, setMenu] = useState(false);
+
+  async function remove() {
+    setMenu(false);
+    const ok = await confirm({
+      title: t("deleteTitle", { name: client.name }),
+      body: t("deleteBody"),
+      destructive: true,
+    });
+    if (ok) run(() => deleteClientAction(locale, client.id));
+  }
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="outline" onClick={() => setOpen(true)}>
         <Pencil /> {tc("edit")}
       </Button>
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl animate-fade-in" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-serif text-lg font-semibold">{tc("edit")}</h3>
-              <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="size-4" />
+      <div className="relative">
+        <Button variant="outline" size="icon" aria-label={tc("more")} aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
+          <MoreHorizontal />
+        </Button>
+        {menu && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+            <div className="absolute right-0 z-50 mt-1 w-48 rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in-0 zoom-in-95">
+              <button
+                onClick={remove}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="size-4" /> {t("delete")}
               </button>
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                start(async () => {
-                  await updateClientAction(locale, props.clientId, fd);
-                  router.refresh();
-                  setOpen(false);
-                });
-              }}
-              className="space-y-3"
-            >
-              <div className="space-y-1.5">
-                <Label>{t("name")}</Label>
-                <Input name="name" defaultValue={props.name} required />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>{t("email")}</Label>
-                  <Input name="email" type="email" defaultValue={props.email ?? ""} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("phone")}</Label>
-                  <Input name="phone" defaultValue={props.phone ?? ""} placeholder="911 920 299" />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>{t("goals")}</Label>
-                <Textarea name="goals" defaultValue={props.goals ?? ""} rows={2} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>{t("notes")}</Label>
-                <Textarea name="notes" defaultValue={props.notes ?? ""} rows={2} />
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-                  {tc("cancel")}
-                </Button>
-                <Button type="submit" disabled={pending}>
-                  {pending ? <Loader2 className="animate-spin" /> : null} {tc("save")}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </>
+        )}
+      </div>
+
+      {open && (
+        <Dialog title={t("editTitle")} onClose={() => setOpen(false)} size="lg">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              run(() => updateClientAction(locale, client.id, fd), {
+                success: tc("saved"),
+                onDone: () => setOpen(false),
+              });
+            }}
+          >
+            <ClientFields client={client} />
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setOpen(false)}>
+                {tc("cancel")}
+              </Button>
+              <Button type="submit" loading={pending}>
+                {tc("save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       )}
     </>
   );

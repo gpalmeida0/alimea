@@ -1,5 +1,6 @@
 import type { DbFood, FoodItem, Meal, MealOption, Recipe } from "@/lib/types";
 import type { Food } from "./foods";
+import { newId as makeId } from "@/lib/utils";
 
 export interface Totals {
   kcal: number;
@@ -10,8 +11,7 @@ export interface Totals {
 
 const ZERO: Totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
-const newId = () =>
-  typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
+const newId = () => makeId("item");
 
 /** Build a FoodItem from a static (JSON) database food + chosen grams. */
 export function foodToItem(food: Food, qtyG?: number): FoodItem {
@@ -135,4 +135,24 @@ export function roundTotals(t: Totals): Totals {
 
 export function hasItems(meals: Meal[]): boolean {
   return meals.some((m) => m.options.some((o) => (o.items?.length ?? 0) > 0));
+}
+
+/** Deep-copy meals with fresh ids everywhere (keeps times, options and food items). */
+export function cloneMeals(meals: Meal[]): Meal[] {
+  return meals.map((m) => ({
+    ...m,
+    id: makeId("meal"),
+    options: m.options.map((o) => ({
+      ...o,
+      id: makeId("opt"),
+      items: o.items?.map((it) => ({ ...it, id: makeId("item"), perG: { ...it.perG } })),
+    })),
+  }));
+}
+
+/** Human line for a food item, e.g. "40 g Aveia" / "1 porção Panquecas". */
+export function formatItem(item: FoodItem, portionWord = "porção"): string {
+  const unit = item.unit === "porção" ? portionWord : item.unit ?? "g";
+  const qty = Number.isInteger(item.qtyG) ? item.qtyG : Math.round(item.qtyG * 10) / 10;
+  return `${qty} ${unit} ${item.name}`;
 }

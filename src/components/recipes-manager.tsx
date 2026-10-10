@@ -1,155 +1,141 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, X, Loader2, ChefHat } from "lucide-react";
+import { ChefHat, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Textarea, Label } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogFooter } from "@/components/ui/dialog";
+import { useFeedback } from "@/components/ui/feedback";
+import { Field, Input, Label, NumberInput, Select, Textarea } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/misc";
+import { Link } from "@/i18n/routing";
+import { useServerAction } from "@/hooks/use-server-action";
 import { deleteRecipeAction, saveRecipeAction } from "@/app/actions";
-import { recipeTotals, roundTotals } from "@/lib/nutrition/items";
+import { recipeTotals, roundTotals, type Totals } from "@/lib/nutrition/items";
 import type { DbFood, Recipe, RecipeItem } from "@/lib/types";
+import { newId } from "@/lib/utils";
 
-const uid = () =>
-  typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+type Draft = { id?: string; name: string; servings?: number; preparation: string; items: RecipeItem[] };
 
-type Draft = {
-  id?: string;
-  name: string;
-  servings: number;
-  preparation: string;
-  items: RecipeItem[];
-};
+const macroLine = (x: Totals) => `${x.kcal} kcal · P ${x.protein}g · HC ${x.carbs}g · G ${x.fat}g`;
 
+/** `foods` must include archived foods so existing recipes keep their totals. */
 export function RecipesManager({ recipes, foods }: { recipes: Recipe[]; foods: DbFood[] }) {
   const t = useTranslations("nutrition");
   const tc = useTranslations("common");
   const locale = useLocale();
-  const router = useRouter();
+  const { confirm } = useFeedback();
+  const { run, pending } = useServerAction();
   const [editing, setEditing] = useState<Draft | null>(null);
-  const [pending, start] = useTransition();
-
-  function openNew() {
-    setEditing({ name: "", servings: 1, preparation: "", items: [] });
-  }
-  function openEdit(r: Recipe) {
-    setEditing({
-      id: r.id,
-      name: r.name,
-      servings: r.servings,
-      preparation: r.preparation ?? "",
-      items: r.items.map((it) => ({ ...it })),
-    });
-  }
-
-  function submit() {
-    if (!editing || !editing.name.trim()) return;
-    start(async () => {
-      await saveRecipeAction(locale, {
-        id: editing.id,
-        name: editing.name.trim(),
-        servings: editing.servings || 1,
-        preparation: editing.preparation || undefined,
-        items: editing.items.filter((it) => it.foodId),
-      });
-      setEditing(null);
-      router.refresh();
-    });
-  }
-
-  function remove(id: string) {
-    start(async () => {
-      await deleteRecipeAction(locale, id);
-      router.refresh();
-    });
-  }
+  const active = foods.filter((f) => !f.archived);
 
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <Button onClick={openNew} disabled={foods.length === 0}>
+        <Button onClick={() => setEditing({ name: "", servings: 1, preparation: "", items: [] })} disabled={!active.length}>
           <Plus /> {t("addRecipe")}
         </Button>
       </div>
 
-      {foods.length === 0 && (
-        <p className="mb-4 rounded-md border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-          {t("noFoodsYet")}
+      {!active.length && (
+        <p className="mb-4 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+          {t("noFoodsYet")}{" "}
+          <Link href="/foods" className="font-medium text-brand-600 hover:underline">
+            {t("goToFoods")}
+          </Link>
         </p>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {recipes.map((r) => {
-          const { total, perPortion } = recipeTotals(r, foods);
-          const pp = roundTotals(perPortion);
-          const tt = roundTotals(total);
-          return (
-            <Card key={r.id}>
-              <CardContent className="space-y-3 pt-5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-2 font-serif text-lg font-semibold">
-                      <ChefHat className="size-4 text-brand" /> <span className="truncate">{r.name}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {r.servings} {t("servings").toLowerCase()} · {r.items.length} {t("ingredients").toLowerCase()}
+      {recipes.length === 0 ? (
+        <EmptyState icon={<ChefHat />} title={t("noRecipes")} description={t("noRecipesHint")} />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {recipes.map((r) => {
+            const { total, perPortion } = recipeTotals(r, foods);
+            return (
+              <Card key={r.id} className="flex flex-col">
+                <CardContent className="flex flex-1 flex-col gap-3 pt-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 font-serif text-lg font-semibold">
+                        <ChefHat className="size-4 shrink-0 text-brand" /> <span className="truncate">{r.name}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {t("servingsCount", { n: r.servings })} · {t("ingredientsCount", { n: r.items.length })}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={tc("edit")}
+                        onClick={() => setEditing({ id: r.id, name: r.name, servings: r.servings, preparation: r.preparation ?? "", items: r.items.map((it) => ({ ...it })) })}
+                      >
+                        <Pencil className="text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={tc("delete")}
+                        onClick={async () => {
+                          if (await confirm({ title: t("deleteRecipeTitle", { name: r.name }), destructive: true })) {
+                            run(() => deleteRecipeAction(locale, r.id), { success: tc("deleted") });
+                          }
+                        }}
+                      >
+                        <Trash2 className="text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="line-clamp-2 text-xs text-muted-foreground">{r.items.map((i) => i.name).join(", ") || "—"}</p>
+                  <div className="mt-auto rounded-lg bg-muted/60 p-2.5 text-xs">
+                    <p className="font-medium">{t("perPortion")}</p>
+                    <p className="lining-nums tabular-nums text-muted-foreground">{macroLine(roundTotals(perPortion))}</p>
+                    <p className="mt-1 text-[11px] lining-nums tabular-nums text-muted-foreground">
+                      {t("totals")}: {roundTotals(total).kcal} kcal
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-1">
-                    <button onClick={() => openEdit(r)} className="rounded p-1 text-muted-foreground hover:text-foreground">
-                      <Pencil className="size-4" />
-                    </button>
-                    <button onClick={() => remove(r.id)} className="rounded p-1 text-muted-foreground hover:text-destructive">
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="rounded-md bg-muted/50 p-2 text-xs">
-                  <p className="font-medium">{t("perPortion")}</p>
-                  <p className="text-muted-foreground">
-                    {pp.kcal} kcal · P {pp.protein} · HC {pp.carbs} · G {pp.fat}
-                  </p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {t("totals")}: {tt.kcal} kcal
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-        {recipes.length === 0 && (
-          <p className="col-span-full rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            {t("noRecipes")}
-          </p>
-        )}
-      </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {editing && (
-        <RecipeEditor
+        <RecipeDialog
           draft={editing}
           setDraft={setEditing}
           foods={foods}
-          onSave={submit}
-          onClose={() => setEditing(null)}
           pending={pending}
-          t={t}
-          tc={tc}
+          onClose={() => setEditing(null)}
+          onSave={() =>
+            run(
+              () =>
+                saveRecipeAction(locale, {
+                  id: editing.id,
+                  name: editing.name.trim(),
+                  servings: editing.servings || 1,
+                  preparation: editing.preparation,
+                  items: editing.items.filter((it) => it.foodId),
+                }),
+              { success: tc("saved"), onDone: () => setEditing(null) },
+            )
+          }
         />
       )}
     </div>
   );
 }
 
-function RecipeEditor({
+function RecipeDialog({
   draft,
   setDraft,
   foods,
   onSave,
   onClose,
   pending,
-  t,
-  tc,
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
@@ -157,122 +143,102 @@ function RecipeEditor({
   onSave: () => void;
   onClose: () => void;
   pending: boolean;
-  t: (k: string, v?: Record<string, string | number>) => string;
-  tc: (k: string) => string;
 }) {
-  const preview: Recipe = {
-    id: "preview",
-    nutritionistId: "",
-    name: draft.name,
-    servings: draft.servings,
-    items: draft.items,
-    createdAt: "",
-  };
+  const t = useTranslations("nutrition");
+  const tc = useTranslations("common");
+  const active = foods.filter((f) => !f.archived);
+  const preview: Recipe = { id: "preview", nutritionistId: "", name: draft.name, servings: draft.servings || 1, items: draft.items, createdAt: "" };
   const { total, perPortion } = recipeTotals(preview, foods);
-  const pp = roundTotals(perPortion);
-  const tt = roundTotals(total);
-
-  const addItem = () =>
-    setDraft({ ...draft, items: [...draft.items, { id: uid(), foodId: foods[0]?.id ?? "", name: foods[0]?.name ?? "", qty: 100 }] });
   const setItem = (id: string, patch: Partial<RecipeItem>) =>
     setDraft({ ...draft, items: draft.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
-  const removeItem = (id: string) => setDraft({ ...draft, items: draft.items.filter((it) => it.id !== id) });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4 py-[6vh]" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-5 shadow-2xl animate-fade-in" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-serif text-lg font-semibold">{draft.id ? t("editRecipe") : t("addRecipe")}</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="size-4" />
-          </button>
+    <Dialog title={draft.id ? t("editRecipe") : t("addRecipe")} onClose={onClose} size="lg">
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (draft.name.trim()) onSave();
+        }}
+      >
+        <div className="grid grid-cols-[1fr_110px] gap-3">
+          <Field label={t("recipeName")} htmlFor="r-name">
+            <Input id="r-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
+          </Field>
+          <Field label={t("servings")} htmlFor="r-servings">
+            <NumberInput id="r-servings" value={draft.servings} onValueChange={(v) => setDraft({ ...draft, servings: v })} min={1} />
+          </Field>
         </div>
-        <div className="space-y-4">
-          <div className="grid grid-cols-[1fr_120px] gap-3">
-            <div className="space-y-1.5">
-              <Label>{t("recipeName")}</Label>
-              <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} autoFocus />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("servings")}</Label>
-              <Input
-                type="number"
-                min={1}
-                value={draft.servings}
-                onChange={(e) => setDraft({ ...draft, servings: Number(e.target.value) || 1 })}
-              />
-            </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label>{t("ingredients")}</Label>
-            {draft.items.map((it) => {
-              const food = foods.find((f) => f.id === it.foodId);
-              return (
-                <div key={it.id} className="flex items-center gap-2">
-                  <select
-                    value={it.foodId}
-                    onChange={(e) => {
-                      const f = foods.find((x) => x.id === e.target.value);
-                      setItem(it.id, { foodId: e.target.value, name: f?.name ?? "" });
-                    }}
-                    className="h-9 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm"
-                  >
-                    {foods.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={it.qty}
-                    onChange={(e) => setItem(it.id, { qty: Number(e.target.value) || 0 })}
-                    className="h-9 w-20 text-right"
-                  />
-                  <span className="w-6 text-xs text-muted-foreground">{food?.baseUnit ?? "g"}</span>
-                  <button onClick={() => removeItem(it.id)} className="text-muted-foreground hover:text-destructive">
-                    <X className="size-4" />
-                  </button>
-                </div>
-              );
-            })}
-            <Button variant="ghost" size="sm" onClick={addItem} disabled={foods.length === 0}>
-              <Plus /> {t("addIngredient")}
-            </Button>
-          </div>
+        <div className="space-y-2">
+          <Label>{t("ingredients")}</Label>
+          {draft.items.length === 0 && <p className="text-sm text-muted-foreground">{t("noIngredients")}</p>}
+          {draft.items.map((it) => {
+            const food = foods.find((f) => f.id === it.foodId);
+            const options = food?.archived ? [food, ...active] : active;
+            return (
+              <div key={it.id} className="flex items-center gap-2">
+                <Select
+                  value={it.foodId}
+                  onChange={(e) => setItem(it.id, { foodId: e.target.value, name: foods.find((x) => x.id === e.target.value)?.name ?? "" })}
+                  className="min-w-0 flex-1"
+                  aria-label={t("selectFood")}
+                >
+                  {!food && <option value={it.foodId}>{it.name || "—"}</option>}
+                  {options.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                      {f.archived ? ` (${t("archived")})` : ""}
+                    </option>
+                  ))}
+                </Select>
+                <NumberInput value={it.qty} onValueChange={(v) => setItem(it.id, { qty: v ?? 0 })} min={0} className="w-20 text-right" aria-label={t("qty")} />
+                <span className="w-7 text-xs text-muted-foreground">{food?.baseUnit ?? "g"}</span>
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, items: draft.items.filter((x) => x.id !== it.id) })}
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label={tc("remove")}
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            );
+          })}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!active.length}
+            onClick={() => setDraft({ ...draft, items: [...draft.items, { id: newId("ri"), foodId: active[0].id, name: active[0].name, qty: 100 }] })}
+          >
+            <Plus /> {t("addIngredient")}
+          </Button>
+        </div>
 
-          <div className="grid grid-cols-2 gap-2 rounded-md bg-muted/50 p-3 text-xs">
-            <div>
-              <p className="font-medium">{t("totals")}</p>
-              <p className="text-muted-foreground">
-                {tt.kcal} kcal · P {tt.protein} · HC {tt.carbs} · G {tt.fat}
-              </p>
-            </div>
-            <div>
-              <p className="font-medium">{t("perPortion")}</p>
-              <p className="text-muted-foreground">
-                {pp.kcal} kcal · P {pp.protein} · HC {pp.carbs} · G {pp.fat}
-              </p>
-            </div>
+        <div className="grid gap-2 rounded-lg bg-muted/60 p-3 text-xs sm:grid-cols-2">
+          <div>
+            <p className="font-medium">{t("totals")}</p>
+            <p className="lining-nums tabular-nums text-muted-foreground">{macroLine(roundTotals(total))}</p>
           </div>
-
-          <div className="space-y-1.5">
-            <Label>{t("preparation")}</Label>
-            <Textarea value={draft.preparation} onChange={(e) => setDraft({ ...draft, preparation: e.target.value })} rows={3} />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={onClose}>
-              {tc("cancel")}
-            </Button>
-            <Button onClick={onSave} disabled={pending || !draft.name.trim()}>
-              {pending ? <Loader2 className="animate-spin" /> : null} {tc("save")}
-            </Button>
+          <div>
+            <p className="font-medium">{t("perPortion")}</p>
+            <p className="lining-nums tabular-nums text-muted-foreground">{macroLine(roundTotals(perPortion))}</p>
           </div>
         </div>
-      </div>
-    </div>
+
+        <Field label={t("preparation")} htmlFor="r-prep">
+          <Textarea id="r-prep" value={draft.preparation} onChange={(e) => setDraft({ ...draft, preparation: e.target.value })} rows={3} />
+        </Field>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            {tc("cancel")}
+          </Button>
+          <Button type="submit" loading={pending} disabled={!draft.name.trim()}>
+            {tc("save")}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Dialog>
   );
 }

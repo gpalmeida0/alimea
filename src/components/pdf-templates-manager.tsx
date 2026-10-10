@@ -1,61 +1,49 @@
 "use client";
 
-import { useRef, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRef } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { FileText, Trash2, Upload, Loader2 } from "lucide-react";
+import { FileText, Trash2, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Label } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useFeedback } from "@/components/ui/feedback";
+import { useServerAction } from "@/hooks/use-server-action";
 import { deletePdfTemplateAction, uploadPdfTemplateAction } from "@/app/actions";
 
-export function PdfTemplatesManager({
-  templates,
-}: {
-  templates: { id: string; name: string; storagePath: string }[];
-}) {
+export function PdfTemplatesManager({ templates }: { templates: { id: string; name: string; url: string }[] }) {
   const t = useTranslations("settings");
-  const tcom = useTranslations("common");
+  const tc = useTranslations("common");
   const locale = useLocale();
-  const router = useRouter();
-  const [pending, start] = useTransition();
+  const { toast, confirm } = useFeedback();
+  const { run, pending } = useServerAction();
   const formRef = useRef<HTMLFormElement>(null);
 
   return (
-    <Card className="mt-6">
+    <Card>
       <CardHeader>
-        <CardTitle>{t("pdfTemplatesTitle")}</CardTitle>
+        <CardTitle className="text-lg">{t("pdfTemplatesTitle")}</CardTitle>
         <p className="text-sm text-muted-foreground">{t("pdfTemplatesHint")}</p>
       </CardHeader>
       <CardContent className="space-y-4">
         {templates.length > 0 && (
           <ul className="space-y-2">
             {templates.map((tpl) => (
-              <li
-                key={tpl.id}
-                className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-              >
-                <a
-                  href={tpl.storagePath}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 text-sm hover:underline"
-                >
-                  <FileText className="size-4 text-brand" /> {tpl.name}
+              <li key={tpl.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+                <a href={tpl.url} target="_blank" rel="noreferrer" className="flex min-w-0 items-center gap-2 text-sm hover:underline">
+                  <FileText className="size-4 shrink-0 text-brand" /> <span className="truncate">{tpl.name}</span>
                 </a>
-                <button
-                  onClick={() =>
-                    start(async () => {
-                      await deletePdfTemplateAction(locale, tpl.id);
-                      router.refresh();
-                    })
-                  }
-                  disabled={pending}
-                  className="text-muted-foreground hover:text-destructive disabled:opacity-50"
-                  aria-label={tcom("delete")}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={tc("delete")}
+                  onClick={async () => {
+                    if (await confirm({ title: t("deleteTemplateTitle", { name: tpl.name }), body: t("deleteTemplateBody"), destructive: true })) {
+                      run(() => deletePdfTemplateAction(locale, tpl.id), { success: tc("deleted") });
+                    }
+                  }}
                 >
-                  <Trash2 className="size-4" />
-                </button>
+                  <Trash2 className="text-muted-foreground" />
+                </Button>
               </li>
             ))}
           </ul>
@@ -66,31 +54,32 @@ export function PdfTemplatesManager({
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            start(async () => {
-              await uploadPdfTemplateAction(locale, fd);
-              formRef.current?.reset();
-              router.refresh();
+            run(() => uploadPdfTemplateAction(locale, fd), {
+              onDone: (res) => {
+                if (!res) return;
+                if (!res.ok) return toast(t(`errors.${res.error}`), "error");
+                formRef.current?.reset();
+                toast(t("templateUploaded"));
+              },
             });
           }}
-          className="space-y-3 border-t border-border pt-4"
+          className="grid gap-3 border-t border-border pt-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
         >
-          <div className="space-y-1.5">
-            <Label htmlFor="tplname">{t("pdfTemplateName")}</Label>
+          <Field label={t("pdfTemplateName")} htmlFor="tplname">
             <Input id="tplname" name="name" placeholder={t("pdfTemplateNamePlaceholder")} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="tplfile">PDF</Label>
+          </Field>
+          <Field label="PDF" htmlFor="tplfile">
             <Input
               id="tplfile"
               name="file"
               type="file"
               accept="application/pdf"
               required
-              className="cursor-pointer file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1 file:text-sm"
+              className="cursor-pointer py-1.5 file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:text-xs"
             />
-          </div>
-          <Button type="submit" disabled={pending}>
-            {pending ? <Loader2 className="animate-spin" /> : <Upload />} {t("uploadTemplate")}
+          </Field>
+          <Button type="submit" loading={pending}>
+            <Upload /> {t("uploadTemplate")}
           </Button>
         </form>
       </CardContent>

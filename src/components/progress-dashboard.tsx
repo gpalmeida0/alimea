@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingDown, TrendingUp, Minus } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 export interface ProgressPoint {
   date: string;
@@ -12,6 +12,7 @@ export interface ProgressPoint {
   bodyFat?: number;
   muscle?: number;
   waist?: number;
+  abdominal?: number;
   arm?: number;
   hip?: number;
   thigh?: number;
@@ -26,6 +27,7 @@ const METRICS: { key: MetricKey; labelKey: string; unit: string; goodDown: boole
   { key: "bodyFat", labelKey: "bodyFat", unit: "%", goodDown: true },
   { key: "muscle", labelKey: "muscleMass", unit: "kg", goodDown: false },
   { key: "waist", labelKey: "waist", unit: "cm", goodDown: true },
+  { key: "abdominal", labelKey: "abdominalPerimeter", unit: "cm", goodDown: true },
   { key: "arm", labelKey: "arm", unit: "cm", goodDown: false },
   { key: "hip", labelKey: "hip", unit: "cm", goodDown: true },
   { key: "thigh", labelKey: "thigh", unit: "cm", goodDown: true },
@@ -46,13 +48,12 @@ export function ProgressDashboard({ points, locale }: { points: ProgressPoint[];
     [points],
   );
 
-  if (active.every((m) => m.series.length < 2)) {
-    return null;
-  }
+  const charted = active.filter((m) => m.series.length >= 2);
+  if (!charted.length) return null;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {active.map((m) => (
+      {charted.map((m) => (
         <MetricCard
           key={m.key}
           label={t(m.labelKey)}
@@ -91,7 +92,7 @@ function MetricCard({
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
           <p className="mt-0.5 font-serif text-2xl font-semibold">
-            {last}
+            {formatNumber(last, locale)}
             <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>
           </p>
         </div>
@@ -102,7 +103,7 @@ function MetricCard({
         >
           {flat ? <Minus className="size-3" /> : delta < 0 ? <TrendingDown className="size-3" /> : <TrendingUp className="size-3" />}
           {delta > 0 ? "+" : ""}
-          {delta}
+          {formatNumber(delta, locale)}
           {unit}
         </span>
       </div>
@@ -133,15 +134,23 @@ function Sparkline({
   const x = (i: number) => pad + (i / (series.length - 1)) * (W - pad * 2);
   const y = (v: number) => pad + (1 - (v - min) / span) * (H - pad * 2);
   const line = series.map((s, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(s.value)}`).join(" ");
-  const stroke = positive ? "#2E7D32" : "#FF8F00";
+  const stroke = positive ? "#2E7D32" : "#E07B00";
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" preserveAspectRatio="none">
+    <>
+    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full" preserveAspectRatio="none" role="img" aria-label={series.map((s) => `${formatDate(s.date, locale)} ${formatNumber(s.value, locale)}`).join(", ")}>
       <path d={`${line} L ${x(series.length - 1)} ${H} L ${x(0)} ${H} Z`} fill={stroke} opacity="0.08" />
       <path d={line} fill="none" stroke={stroke} strokeWidth="2" vectorEffect="non-scaling-stroke" />
       {series.map((s, i) => (
-        <circle key={i} cx={x(i)} cy={y(s.value)} r="2.5" fill={stroke} />
+        <circle key={i} cx={x(i)} cy={y(s.value)} r="2.5" fill={stroke}>
+          <title>{`${formatDate(s.date, locale)}: ${formatNumber(s.value, locale)}`}</title>
+        </circle>
       ))}
     </svg>
+    <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+      <span>{formatDate(series[0].date, locale, { day: "2-digit", month: "short" })}</span>
+      <span>{formatDate(series[series.length - 1].date, locale, { day: "2-digit", month: "short" })}</span>
+    </div>
+    </>
   );
 }

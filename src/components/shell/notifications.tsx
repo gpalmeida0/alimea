@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Bell, CalendarClock } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/routing";
 import { cn, formatDate } from "@/lib/utils";
 
 export interface UpcomingAppt {
@@ -20,6 +20,13 @@ export function Notifications({ upcoming }: { upcoming: UpcomingAppt[] }) {
   const [open, setOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
   // Re-evaluate countdowns every 30s.
   useEffect(() => {
     const i = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -29,7 +36,7 @@ export function Notifications({ upcoming }: { upcoming: UpcomingAppt[] }) {
   const items = useMemo(() => {
     return upcoming
       .map((a) => ({ ...a, mins: Math.round((new Date(a.date).getTime() - nowMs) / 60000) }))
-      .filter((a) => a.mins >= 0)
+      .filter((a) => a.mins >= -15)
       .sort((a, b) => a.mins - b.mins);
   }, [upcoming, nowMs]);
 
@@ -50,6 +57,7 @@ export function Notifications({ upcoming }: { upcoming: UpcomingAppt[] }) {
         onClick={() => setOpen((v) => !v)}
         className="relative flex size-9 items-center justify-center rounded-md border border-border bg-card text-foreground hover:bg-muted"
         aria-label={t("title")}
+        aria-expanded={open}
       >
         <Bell className="size-5" />
         {count > 0 && (
@@ -61,8 +69,9 @@ export function Notifications({ upcoming }: { upcoming: UpcomingAppt[] }) {
 
       {open && (
         <>
+          {/* click-outside catcher */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-border bg-card p-2 shadow-2xl animate-fade-in">
+          <div className="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-card p-2 shadow-2xl animate-fade-in">
             <p className="px-2 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("title")}
             </p>
@@ -76,7 +85,7 @@ export function Notifications({ upcoming }: { upcoming: UpcomingAppt[] }) {
                   key={a.id}
                   onClick={() => {
                     setOpen(false);
-                    router.push(`/${locale}/clients/${a.clientId}`);
+                    router.push(`/clients/${a.clientId}`);
                   }}
                   className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
                 >

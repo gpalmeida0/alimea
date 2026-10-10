@@ -13,7 +13,13 @@
     "recipes": "Receitas",
     "appointments": "Marcações",
     "billing": "Faturação",
-    "settings": "Definições"
+    "settings": "Definições",
+    "main": "Navegação principal",
+    "groups": {
+      "work": "Dia a dia",
+      "library": "Biblioteca clínica",
+      "admin": "Consultório"
+    }
   },
   "mets": {
     "title": "Atividades (METs)",
@@ -97,7 +103,11 @@
     "female": "Feminino",
     "male": "Masculino",
     "ethnicity": "Etnia",
-    "ethnicities": { "white": "Caucasiana", "black": "Negra", "other": "Outra" },
+    "ethnicities": {
+      "white": "Caucasiana",
+      "black": "Negra",
+      "other": "Outra"
+    },
     "profession": "Profissão",
     "reason": "Motivo da consulta",
     "previousFollowUp": "Seguimento em nutrição?",
@@ -180,23 +190,125 @@
     "exportPdf": "Exportar PDF do plano",
     "save": "Guardar consulta",
     "noFoodsYet": "Ainda não tem alimentos. Adicione-os em \"Alimentos\".",
-    "pickItem": "Escolher alimento / receita"
+    "pickItem": "Escolher alimento / receita",
+    "weightKg": "Peso (kg)",
+    "birthDate": "Data de nascimento",
+    "ageYears": "{age} anos",
+    "ageNeeded": "Necessária para a maioria das fórmulas.",
+    "ageLabel": "Idade",
+    "consultationDate": "Data da consulta",
+    "consultationNotes": "Notas da consulta",
+    "addStandardMeals": "Adicionar as 5 refeições habituais",
+    "removeMeal": "Remover refeição",
+    "defaultMeals": [
+      "Pequeno-almoço",
+      "Merenda da manhã",
+      "Almoço",
+      "Merenda da tarde",
+      "Jantar"
+    ],
+    "comparedWith": "comparado com {date}",
+    "bmiLabel": "IMC",
+    "bmiClass": {
+      "underweight": "Baixo peso",
+      "normal": "Peso normal",
+      "overweight": "Pré-obesidade",
+      "obese1": "Obesidade grau I",
+      "obese2": "Obesidade grau II",
+      "obese3": "Obesidade grau III",
+      "unknown": "—"
+    },
+    "whr": "Relação cintura-anca",
+    "whrNeeds": "Requer cintura, anca e sexo",
+    "whrOk": "Dentro da referência da OMS",
+    "whrRisk": "Acima do ponto de corte de risco cardiometabólico (OMS)",
+    "fatMassKg": "Massa gorda",
+    "missingInputsList": "Em falta para algumas fórmulas: {fields}.",
+    "use": "Usar",
+    "useHint": "“Usar” regista o valor na consulta (gráficos de evolução e PDF).",
+    "currentRecorded": "Registado nesta consulta: {value}",
+    "applicable": "Aplicáveis a este cliente",
+    "otherFormulas": "Outras fórmulas",
+    "ffm": "MLG (kg)",
+    "gebKcal": "GEB (kcal/dia)",
+    "getKcal": "GET (kcal/dia)",
+    "needsFfm": "Esta fórmula requer massa livre de gordura: indique a massa magra ou a % de massa gorda.",
+    "goalShortcut": {
+      "loss": "−20%",
+      "maintain": "= GET",
+      "gain": "+15%"
+    },
+    "targetManual": "Objetivo definido manualmente.",
+    "targetFollowsGet": "O objetivo acompanha o GET automaticamente.",
+    "resetToGet": "Acompanhar GET",
+    "targetSummary": "Objetivo do plano: {kcal} kcal/dia — usado nos Macros e no resumo do plano alimentar.",
+    "palShort": {
+      "sedentary": "Sedentário",
+      "light": "Ligeiro",
+      "moderate": "Moderado",
+      "active": "Muito ativo",
+      "extreme": "Extremo"
+    },
+    "sumOk": "A distribuição soma 100%.",
+    "resetMacros": "Repor 15 / 55 / 30",
+    "needsWeight": "requer peso",
+    "allCategories": "Todas as categorias",
+    "noFoodsHint": "Adicione alimentos manualmente ou copie-os do separador da base de dados.",
+    "noMatches": "Nenhum alimento corresponde.",
+    "kcalMismatch": "Atenção: as kcal diferem muito dos macros (4/4/9 kcal por g).",
+    "addToMyFoods": "Adicionar aos meus alimentos",
+    "inMyFoods": "Já está nos meus alimentos",
+    "addedToMyFoods": "“{name}” adicionado aos meus alimentos",
+    "recipe": "Receita",
+    "pickerHint": "↑↓ para navegar · Enter para adicionar · Shift+Enter para adicionar e continuar",
+    "goToFoods": "Ir para Alimentos",
+    "noRecipesHint": "As receitas contam por porção nos planos alimentares.",
+    "noIngredients": "Ainda sem ingredientes.",
+    "servingsCount": "{n, plural, =1 {1 porção} other {# porções}}",
+    "ingredientsCount": "{n, plural, =1 {1 ingrediente} other {# ingredientes}}",
+    "deleteRecipeTitle": "Eliminar a receita “{name}”?"
   },
   "auth": {
     "login": "Entrar",
-    "signup": "Criar conta",
     "logout": "Terminar sessão",
     "loginSubtitle": "Entre na sua conta de nutricionista.",
-    "signupSubtitle": "Crie a sua conta de nutricionista.",
-    "name": "Nome",
     "email": "Email",
     "password": "Palavra-passe",
-    "noAccount": "Ainda não tem conta?",
-    "haveAccount": "Já tem conta?",
     "demoHint": "Demonstração: eduarda@alimea.app / alimea",
+    "inviteOnly": "As contas são criadas pela equipa Alimea. Contacte-nos para obter acesso.",
+    "forgotPassword": "Esqueceu-se da palavra-passe?",
+    "forgotTitle": "Repor palavra-passe",
+    "forgotSubtitle": "Indique o seu email e enviamos-lhe uma ligação para escolher uma nova palavra-passe.",
+    "forgotSent": "Se existir uma conta com esse email, a ligação de reposição está a caminho. Pode demorar alguns minutos.",
+    "sendResetLink": "Enviar ligação",
+    "backToLogin": "Voltar ao início de sessão",
+    "inviteTitle": "Bem-vindo à Alimea",
+    "confirmTitle": "Confirmar email",
+    "confirmSubtitle": "Carregue em continuar para concluir.",
+    "continue": "Continuar",
+    "newPasswordTitle": "Escolha uma palavra-passe",
+    "newPasswordSubtitle": "Vai usá-la para iniciar sessão a partir de agora.",
+    "newPassword": "Nova palavra-passe",
+    "confirmPassword": "Repetir nova palavra-passe",
+    "savePassword": "Guardar palavra-passe",
+    "passwordHint": "Pelo menos {min} caracteres.",
+    "showPassword": "Mostrar palavra-passe",
+    "hidePassword": "Ocultar palavra-passe",
+    "mfaTitle": "Verificação em dois passos",
+    "mfaSubtitle": "Introduza o código de 6 dígitos da sua aplicação de autenticação.",
+    "mfaCode": "Código de 6 dígitos",
+    "mfaLost": "Perdeu o telemóvel? Contacte a equipa Alimea para recuperar o acesso.",
+    "verify": "Verificar",
     "errors": {
       "invalid": "Credenciais inválidas.",
-      "exists": "Já existe uma conta com este email."
+      "locked": "Demasiadas tentativas. Aguarde alguns minutos e tente novamente.",
+      "link": "Esta ligação é inválida ou expirou. Peça uma nova.",
+      "weak": "Essa palavra-passe é demasiado curta ou fácil de adivinhar.",
+      "same": "A nova palavra-passe tem de ser diferente da atual.",
+      "mismatch": "As duas palavras-passe não coincidem.",
+      "code": "O código não está correto. Experimente o próximo da aplicação.",
+      "currentPassword": "A palavra-passe atual não está correta.",
+      "failed": "Ocorreu um erro. Tente novamente."
     }
   },
   "notifications": {
@@ -225,13 +337,24 @@
     "all": "Todos",
     "language": "Idioma",
     "actions": "Ações",
-    "optional": "opcional"
+    "optional": "opcional",
+    "close": "Fechar",
+    "confirm": "Confirmar",
+    "deleted": "Eliminado",
+    "error": "Algo correu mal. Tente novamente.",
+    "more": "Mais opções",
+    "menu": "Menu",
+    "name": "Nome",
+    "unsaved": "Alterações por guardar",
+    "saveFailed": "Não foi possível guardar — tente de novo",
+    "savedAt": "Guardado às {time}",
+    "allSaved": "Tudo guardado"
   },
   "dashboard": {
     "title": "Painel",
     "welcome": "Bem-vinda de volta, {name}",
     "subtitle": "Aqui está o resumo da sua atividade clínica.",
-    "activeClients": "Clientes ativos",
+    "activeClients": "Clientes ativos (6 meses)",
     "recentConsultations": "Consultas recentes",
     "consultationsThisMonth": "Consultas este mês",
     "totalConsults": "{n} no total",
@@ -246,7 +369,17 @@
     "newClient": "Novo cliente",
     "newPlan": "Novo plano",
     "viewAll": "Ver todos",
-    "noActivity": "Ainda sem atividade registada."
+    "noActivity": "Ainda sem atividade registada.",
+    "greeting": {
+      "morning": "Bom dia, {name}",
+      "afternoon": "Boa tarde, {name}",
+      "evening": "Boa noite, {name}"
+    },
+    "schedule": "Agenda",
+    "ofTotal": "{n} clientes no total · +{newCount} este mês",
+    "revenueThisMonth": "Faturação este mês",
+    "pendingRevenue": "{amount} por receber",
+    "plansHint": "{n} planos criados"
   },
   "clients": {
     "title": "Clientes",
@@ -262,7 +395,26 @@
     "searchPlaceholder": "Pesquisar clientes por nome ou email…",
     "createTitle": "Criar cliente",
     "notes": "Notas",
-    "goals": "Objetivos"
+    "goals": "Objetivos",
+    "createSubtitle": "Dados básicos — o resto é preenchido durante a consulta.",
+    "editTitle": "Editar cliente",
+    "delete": "Eliminar cliente",
+    "deleteTitle": "Eliminar {name}?",
+    "deleteBody": "Todas as consultas, planos e marcações deste cliente são eliminados definitivamente. Os registos de faturação mantêm-se.",
+    "phoneHint": "Usado para os lembretes por SMS.",
+    "noClientsHint": "Adicione o primeiro cliente para começar consultas e planos.",
+    "noMatches": "Nenhum cliente corresponde à pesquisa.",
+    "count": "{n, plural, =1 {1 cliente} other {# clientes}}",
+    "ageShort": "{age} anos",
+    "lastWeight": "Último peso",
+    "consultationsCount": "{n, plural, =0 {sem consultas} =1 {1 consulta} other {# consultas}}",
+    "nextAppointment": "Próxima marcação",
+    "sortBy": "Ordenar por",
+    "sort": {
+      "name": "Nome (A–Z)",
+      "recent": "Consulta mais recente",
+      "newest": "Clientes mais recentes"
+    }
   },
   "client": {
     "overview": "Resumo",
@@ -278,7 +430,20 @@
     "comparison": "Comparação",
     "noConsultations": "Sem consultas registadas.",
     "age": "{age} anos",
-    "since": "Cliente desde {date}"
+    "since": "Cliente desde {date}",
+    "startTitle": "Nova consulta",
+    "startHint": "Abre a anamnese, a antropometria e o plano alimentar num só sítio.",
+    "startHintDuplicate": "Duplicar pré-preenche as medições e clona o último plano — ajuste só o que mudou.",
+    "progressEmpty": "Os gráficos de evolução aparecem a partir de duas consultas",
+    "progressEmptyHint": "Registe o peso e as medições em cada consulta.",
+    "noConsultationsHint": "Comece a primeira consulta acima.",
+    "plan": "Plano",
+    "nextAppointments": "Marcações",
+    "schedule": "Marcar",
+    "noAppointments": "Sem marcações futuras.",
+    "otherPlans": "Outros planos",
+    "deleteConsultation": "Eliminar consulta",
+    "deleteConsultationBody": "A consulta e o respetivo plano alimentar são eliminados definitivamente. A faturação automática por pagar também é removida."
   },
   "billing": {
     "title": "Faturação",
@@ -310,13 +475,25 @@
     "auto": "Automático",
     "manual": "Manual",
     "allStatuses": "Todos os estados",
-    "fromConsultation": "Da consulta"
+    "fromConsultation": "Da consulta",
+    "totalIn": "Total · {month}",
+    "allMonths": "Todos os meses",
+    "month": "Mês",
+    "otherClient": "Outro (escrever o nome)",
+    "clientName": "Nome do cliente",
+    "customType": "Outro tipo…",
+    "noEntriesHint": "Os registos são criados automaticamente em cada consulta, ou adicione um manualmente.",
+    "deleteTitle": "Eliminar este registo?",
+    "typesHint": "Cada nova consulta é faturada com o preço do respetivo tipo.",
+    "deleteTypeTitle": "Eliminar “{name}”?",
+    "deleteTypeBody": "Os registos existentes mantêm o nome e o valor.",
+    "fileName": "faturacao"
   },
   "consultation": {
     "title": "Consulta",
     "date": "Data da consulta",
     "weight": "Peso (kg)",
-    "height": "Altura (m)",
+    "height": "Altura (cm)",
     "bmi": "IMC",
     "bodyFat": "% massa gorda",
     "muscleMass": "Kg massa muscular",
@@ -340,7 +517,12 @@
     "bmiShort": "IMC",
     "fatShort": "MG",
     "notesFromConsult": "Notas da consulta",
-    "prefilledNotice": "Pré-preenchido com base na consulta anterior. Ajuste apenas o necessário."
+    "prefilledNotice": "Pré-preenchido com base na consulta anterior. Ajuste apenas o necessário.",
+    "noMeasurements": "Sem medições",
+    "abdominalPerimeter": "Abdominal",
+    "chest": "Peito",
+    "abdominalSkinfold": "Abdominal",
+    "peitoral": "Peitoral (prega)"
   },
   "plan": {
     "title": "Plano alimentar",
@@ -367,7 +549,7 @@
     "notes": "Notas",
     "nextAppointment": "Data da próxima consulta",
     "motivationalQuote": "Frase motivacional",
-    "generate": "Gerar plano",
+    "generate": "Descarregar PDF",
     "generating": "A gerar PDF…",
     "generatePdf": "Gerar PDF",
     "preview": "Pré-visualizar",
@@ -380,7 +562,24 @@
     "applySuggestion": "Aplicar",
     "addMealPlaceholder": "Ex.: Pequeno-almoço, Almoço, Lanche…",
     "optionPlaceholder": "Ex.: 1 pão de mistura + 1 fatia de queijo flamengo light",
-    "emptyMeals": "Ainda não adicionou refeições. Adicione a primeira ou duplique um plano anterior."
+    "emptyMeals": "Ainda não adicionou refeições. Adicione a primeira ou duplique um plano anterior.",
+    "standardDay": "Adicionar um dia tipo (5 refeições)",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "removeMealTitle": "Remover “{name}”?",
+    "quantity": "quantidade",
+    "portion": "porção",
+    "fromHistory": "Reutilizar do histórico deste cliente…",
+    "noItemsHint": "Adicione alimentos às opções para comparar com o objetivo.",
+    "nextAppointmentHint": "Impresso na contracapa, p.ex. “20 de maio às 14h00”.",
+    "deletePlan": "Eliminar plano",
+    "deletePlanBody": "Este plano é eliminado definitivamente.",
+    "templateApplied": "Modelo “{name}” aplicado",
+    "templateAppend": "Juntar às refeições atuais",
+    "templateReplace": "Substituir refeições atuais",
+    "saveAsTemplateHint": "Reutilize as refeições, a suplementação e as notas deste plano noutros clientes.",
+    "templateName": "Nome do modelo",
+    "templateSaved": "Modelo guardado"
   },
   "recommendations": {
     "title": "Recomendações reutilizáveis",
@@ -396,7 +595,13 @@
       "general": "Geral"
     },
     "content": "Conteúdo",
-    "noItems": "Sem recomendações. Crie blocos reutilizáveis para poupar tempo."
+    "noItems": "Sem recomendações. Crie blocos reutilizáveis para poupar tempo.",
+    "edit": "Editar recomendação",
+    "deleteTitle": "Eliminar “{title}”?",
+    "hint": "Blocos de texto reutilizáveis que pode inserir em qualquer plano, nas duas línguas.",
+    "missingTranslation": "Ainda sem versão em inglês",
+    "translateFromPt": "Traduzir do português",
+    "usageHint": "No editor de planos, ao selecionar uma recomendação o texto é inserido na língua do plano."
   },
   "templates": {
     "title": "Modelos de plano",
@@ -404,7 +609,12 @@
     "new": "Novo modelo",
     "apply": "Aplicar modelo",
     "noItems": "Sem modelos guardados.",
-    "createHint": "Dica: também pode guardar qualquer plano como modelo a partir do editor."
+    "createHint": "Dica: também pode guardar qualquer plano como modelo a partir do editor.",
+    "edit": "Editar modelo",
+    "name": "Nome do modelo",
+    "deleteTitle": "Eliminar o modelo “{name}”?",
+    "emptyHint": "Crie um aqui, ou guarde qualquer plano como modelo no editor de planos.",
+    "optionsCount": "{n} opções"
   },
   "appointments": {
     "title": "Marcações",
@@ -426,7 +636,20 @@
       "cancelled": "Cancelada"
     },
     "markCompleted": "Marcar como realizada",
-    "markCancelled": "Cancelar consulta"
+    "markCancelled": "Cancelar consulta",
+    "editTitle": "Editar marcação",
+    "created": "Consulta marcada",
+    "inPast": "Esta data já passou.",
+    "prevMonth": "Mês anterior",
+    "nextMonth": "Mês seguinte",
+    "viewMonth": "Mês",
+    "viewAgenda": "Agenda",
+    "newOn": "Nova marcação a {date}",
+    "openClient": "Abrir cliente",
+    "startConsultation": "Iniciar consulta",
+    "reopen": "Reabrir",
+    "deleteTitle": "Eliminar esta marcação?",
+    "deleteBody": "A marcação e o histórico de lembretes são removidos."
   },
   "reminders": {
     "title": "Lembretes automáticos",
@@ -448,7 +671,18 @@
     "outbox": "Mensagens enviadas",
     "noMessages": "Ainda não foram enviadas mensagens.",
     "messagePreview": "Pré-visualização da mensagem",
-    "secretary": "Substitui o trabalho de secretariado: os clientes são lembrados automaticamente."
+    "secretary": "Substitui o trabalho de secretariado: os clientes são lembrados automaticamente.",
+    "cronHint": "Corre automaticamente todas as manhãs. Use o botão para enviar já os lembretes pendentes.",
+    "sentShort": "Enviado",
+    "dueShort": "Pendente",
+    "resend": "Reenviar lembrete",
+    "sentNow": "Lembrete enviado",
+    "failed": "O lembrete falhou",
+    "status": {
+      "sent": "Enviado",
+      "simulated": "Pré-visualização",
+      "failed": "Falhou"
+    }
   },
   "calc": {
     "title": "Necessidades energéticas",
@@ -497,7 +731,11 @@
     "improve": "Melhorar texto",
     "suggest": "Sugerir recomendação",
     "disclaimer": "A IA apoia tarefas administrativas. Nunca cria planos nem decide clinicamente.",
-    "hint": "A nutricionista mantém sempre o controlo clínico total."
+    "hint": "A nutricionista mantém sempre o controlo clínico total.",
+    "translateTo": "Traduzir → {lang}",
+    "translated": "Plano traduzido",
+    "notConfigured": "O assistente de IA não está configurado (OPENAI_API_KEY).",
+    "failed": "O assistente de IA falhou. Tente novamente."
   },
   "settings": {
     "title": "Definições",
@@ -520,7 +758,72 @@
     "pdfTemplatesHint": "Carregue os seus próprios modelos de PDF. Pode escolher qual usar em cada plano.",
     "pdfTemplateName": "Nome do modelo",
     "pdfTemplateNamePlaceholder": "Ex.: Plano Premium 2025",
-    "uploadTemplate": "Carregar modelo"
+    "uploadTemplate": "Carregar modelo",
+    "subtitle": "Os seus dados profissionais e o aspeto dos planos.",
+    "email": "Email",
+    "uploadLogo": "Carregar logótipo",
+    "removeLogo": "Remover",
+    "interfaceLanguageHint": "Também usada nos lembretes por SMS.",
+    "templateUploaded": "Modelo carregado",
+    "deleteTemplateTitle": "Eliminar “{name}”?",
+    "deleteTemplateBody": "Os planos que o usam passam para o design clássico.",
+    "errors": {
+      "logoType": "O logótipo tem de ser uma imagem PNG ou JPG.",
+      "logoSize": "O logótipo tem de ter menos de 2 MB.",
+      "pdfType": "O ficheiro não é um PDF válido.",
+      "pdfSize": "O PDF tem de ter menos de 10 MB.",
+      "missing": "Escolha um ficheiro PDF."
+    },
+    "integrations": "Integrações",
+    "integrationsHint": "Configuradas através de variáveis de ambiente no servidor.",
+    "active": "Ativo",
+    "inactive": "Não configurado",
+    "integration": {
+      "database": {
+        "title": "Base de dados (Supabase)",
+        "on": "Os dados são guardados com segurança no Supabase.",
+        "off": "Modo demonstração — os dados ficam em memória e perdem-se ao reiniciar."
+      },
+      "sms": {
+        "title": "Lembretes por SMS (Twilio)",
+        "on": "Os lembretes são enviados por SMS.",
+        "off": "Modo pré-visualização — as mensagens aparecem apenas na caixa de saída."
+      },
+      "ai": {
+        "title": "Assistente de IA (OpenAI)",
+        "on": "Traduza e melhore textos com IA.",
+        "off": "Defina OPENAI_API_KEY para ativar tradução e melhoria de texto."
+      }
+    },
+    "security": {
+      "title": "Conta e segurança",
+      "subtitle": "Como inicia sessão na Alimea.",
+      "loginEmail": "Email de início de sessão",
+      "loginEmailHint": "Independente do email de contacto impresso nos seus planos.",
+      "changeEmail": "Alterar email",
+      "emailConfirm": "Verifique a sua caixa de correio para confirmar o novo endereço.",
+      "emailErrors": {
+        "invalid": "Esse endereço de email não é válido.",
+        "exists": "Já existe outra conta com esse email.",
+        "failed": "Não foi possível alterar o email. Tente novamente."
+      },
+      "currentPassword": "Palavra-passe atual",
+      "changePassword": "Alterar palavra-passe",
+      "passwordChanged": "Palavra-passe alterada",
+      "mfaTitle": "Verificação em dois passos",
+      "mfaHint": "Pedir um código de uma aplicação de autenticação (Google Authenticator, Authy, 1Password…) sempre que inicia sessão.",
+      "mfaUnsupported": "Indisponível no modo de demonstração.",
+      "mfaOn": "Ativa",
+      "mfaOff": "Inativa",
+      "mfaEnable": "Ativar",
+      "mfaDisable": "Desativar",
+      "mfaScan": "Leia o código QR com a sua aplicação de autenticação, ou escreva a chave abaixo, e introduza o código de 6 dígitos apresentado.",
+      "mfaQrAlt": "Código QR para a aplicação de autenticação",
+      "mfaEnabled": "Verificação em dois passos ativada",
+      "mfaDisabled": "Verificação em dois passos desativada",
+      "mfaDisableTitle": "Desativar a verificação em dois passos?",
+      "mfaDisableBody": "A sua conta ficará protegida apenas pela palavra-passe."
+    }
   },
   "pdf": {
     "planTitle": "Plano Alimentar",
@@ -532,5 +835,28 @@
     "nextConsultation": "Data da próxima consulta:",
     "nutritionist": "Nutricionista",
     "credential": "Cédula Profissional: {n}"
+  },
+  "palette": {
+    "placeholder": "Pesquisar clientes, páginas…",
+    "actions": "Ações",
+    "pages": "Páginas"
+  },
+  "errors": {
+    "title": "Algo correu mal",
+    "body": "Ocorreu um erro inesperado. Os dados guardados estão seguros — tente novamente.",
+    "retry": "Tentar novamente",
+    "notFoundTitle": "Página não encontrada",
+    "notFoundBody": "A página que procura não existe ou foi movida.",
+    "backHome": "Voltar ao painel"
+  },
+  "plans": {
+    "title": "Planos",
+    "subtitle": "Todos os planos alimentares, editados recentemente primeiro.",
+    "empty": "Ainda não há planos",
+    "emptyHint": "Os planos são criados ao iniciar uma consulta.",
+    "updated": "Editado {date}",
+    "fromConsultation": "Da consulta",
+    "standalone": "Plano avulso",
+    "noMeals": "Sem refeições"
   }
 }

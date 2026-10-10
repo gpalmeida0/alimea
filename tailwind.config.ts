@@ -16,15 +16,18 @@ const config: Config = {
         // Alimea brand palette
         brand: {
           DEFAULT: "#2E7D32",
-          50: "#EAF4EB",
-          100: "#D4E9D6",
+          50: "#EEF6EE",
+          100: "#D7EBD8",
+          200: "#B3D9B5",
           500: "#2E7D32",
           600: "#256628",
-          secondary: "#66BB6A",
-          accent: "#FF8F00",
+          700: "#1D521F",
         },
-        background: "#F8FAF8",
-        foreground: "#1F2937",
+        // Warm neutrals borrowed from the PDF template (cream / taupe).
+        cream: "#F4F1EE",
+        taupe: "#B49D8A",
+        background: "#F7F8F5",
+        foreground: "#1F2A24",
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -41,12 +44,13 @@ const config: Config = {
           foreground: "#0F2911",
         },
         accent: {
-          DEFAULT: "#FF8F00",
+          DEFAULT: "#E07B00",
           foreground: "#FFFFFF",
+          700: "#9A5400",
         },
         muted: {
-          DEFAULT: "#EEF2EE",
-          foreground: "#5B6660",
+          DEFAULT: "#EFF2EC",
+          foreground: "#5C6862",
         },
         destructive: {
           DEFAULT: "#DC2626",

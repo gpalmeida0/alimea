@@ -1,877 +1,768 @@
 import {
-  computeBmi,
+  byNewest,
   DEFAULT_CONSULTATION_TYPES,
+  emptyMeasurements,
+  normalizeMeasurements,
   type Appointment,
   type BillingEntry,
   type Client,
   type Consultation,
   type ConsultationType,
   type DbFood,
-  type Measurements,
   type MealPlan,
   type NutritionistProfile,
-  type PlanTemplate,
   type PdfTemplateFile,
+  type PlanTemplate,
   type Recipe,
   type Recommendation,
   type SentMessage,
 } from "@/lib/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { redirect } from "next/navigation";
+import { newId, todayISO } from "@/lib/utils";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
+import type {
+  AuthStatus,
+  BillingPatch,
+  EmailChangeResult,
+  EmailLinkType,
+  MfaEnrollment,
+  MfaStatus,
+  PasswordResult,
+  FileKind,
+  NewAppointment,
+  NewBillingEntry,
+  NewClient,
+  NewFood,
+  NewRecipe,
+  ReminderStore,
+} from "./repo-types";
 
 // ---------------------------------------------------------------------------
-// Supabase-backed repository.
+// Supabase-backed repository (production).
 //
-// Same async API as repo-memory.ts, so it is a drop-in swap (see repo.ts).
-// Per-tenant isolation is enforced by Row Level Security (auth.uid()); most
-// functions therefore just query and let the database scope the rows.
-//
-// The reminder cron has no user session and must read across tenants, so the
-// few "admin-capable" functions fall back to the service-role client when no
-// user is logged in.
+// Implements the Repository contract (repo-types.ts). Tenant isolation is
+// enforced by Row Level Security (auth.uid()), so interactive functions use
+// the user-scoped client only. The service-role client is used exclusively by
+// cronReminderStore(), for the trusted daily reminder job.
 // ---------------------------------------------------------------------------
 
-/** User-scoped client (RLS applies). Use for all interactive, per-tenant ops. */
-async function db(): Promise<SupabaseClient> {
-  return createSupabaseServerClient();
-}
+/** Private Storage bucket for logos and uploaded PDF templates (migration 0004). */
+export const FILES_BUCKET = "alimea-files";
 
-/** Current tenant id from the Supabase session. Throws if unauthenticated. */
-async function currentNid(): Promise<string> {
-  const supabase = await db();
+const db = (): Promise<SupabaseClient> => createSupabaseServerClient();
+
+async function currentNid(supabase?: SupabaseClient): Promise<string> {
+  const client = supabase ?? (await db());
   const {
     data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  } = await client.auth.getUser();
+  if (!user) redirect("/login"); // see repo-memory nid()
+  if (await mfaPending(client)) redirect("/mfa");
   return user.id;
 }
 
-/**
- * Client for functions that are reused by both the interactive app (where a
- * user is logged in → RLS-scoped) and the reminder cron (no session → service
- * role). Falls back to the admin client only when there is no user.
- */
-async function resilientDb(): Promise<SupabaseClient> {
-  const supabase = await db();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) return supabase;
-  const admin = createSupabaseAdminClient();
-  return admin ?? supabase;
-}
-
 // --- Mappers ---------------------------------------------------------------
-// Rows come back loosely typed from PostgREST; map them into domain types.
-type Row = Record<string, any>; // eslint-disable-line
+type Row = Record<string, any>;  
 
-function toProfile(r: Row): NutritionistProfile {
-  return {
-    id: r.id,
-    name: r.name ?? "",
-    email: r.email ?? "",
-    credential: r.credential ?? "",
-    instagram: r.instagram ?? undefined,
-    phone: r.phone ?? undefined,
-    address: r.address ?? undefined,
-    logoUrl: r.logo_url ?? undefined,
-    pdfTemplate: r.pdf_template ?? undefined,
-    interfaceLanguage: r.interface_language === "en" ? "en" : "pt-PT",
-  };
-}
+const opt = <T>(v: T | null | undefined): T | undefined => (v == null ? undefined : v);
+const dateOnly = (v: unknown) => (typeof v === "string" ? v.slice(0, 10) : String(v));
 
-function toClient(r: Row): Client {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    name: r.name,
-    email: r.email ?? undefined,
-    phone: r.phone ?? undefined,
-    birthDate: r.birth_date ?? undefined,
-    sex: r.sex ?? undefined,
-    ethnicity: r.ethnicity ?? undefined,
-    profession: r.profession ?? undefined,
-    goals: r.goals ?? undefined,
-    notes: r.notes ?? undefined,
-    anamnesis: r.anamnesis ?? undefined,
-    createdAt: r.created_at,
-  };
-}
+const toProfile = (r: Row): NutritionistProfile => ({
+  id: r.id,
+  name: r.name ?? "",
+  email: r.email ?? "",
+  credential: r.credential ?? "",
+  instagram: opt(r.instagram),
+  phone: opt(r.phone),
+  address: opt(r.address),
+  logoUrl: opt(r.logo_url),
+  pdfTemplate: opt(r.pdf_template),
+  interfaceLanguage: r.interface_language === "en" ? "en" : "pt-PT",
+});
 
-const emptyMeasurements: Measurements = { perimeters: {}, skinfolds: {} };
+const toClient = (r: Row): Client => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  name: r.name,
+  email: opt(r.email),
+  phone: opt(r.phone),
+  birthDate: r.birth_date ? dateOnly(r.birth_date) : undefined,
+  sex: opt(r.sex),
+  ethnicity: opt(r.ethnicity),
+  profession: opt(r.profession),
+  goals: opt(r.goals),
+  notes: opt(r.notes),
+  anamnesis: opt(r.anamnesis),
+  createdAt: r.created_at,
+});
 
-function toConsultation(r: Row): Consultation {
-  const m = (r.measurements ?? {}) as Partial<Measurements>;
-  return {
-    id: r.id,
-    clientId: r.client_id,
-    date: typeof r.date === "string" ? r.date.slice(0, 10) : r.date,
-    consultationNumber: r.consultation_number ?? undefined,
-    measurements: { ...emptyMeasurements, ...m, perimeters: { ...m.perimeters }, skinfolds: { ...m.skinfolds } },
-    foodHistory: r.food_history ?? undefined,
-    energy: r.energy ?? undefined,
-    macros: r.macros ?? undefined,
-    notes: r.notes ?? undefined,
-    planId: r.plan_id ?? undefined,
-    consultationTypeId: r.consultation_type_id ?? undefined,
-    createdAt: r.created_at,
-  };
-}
+const emptyJson = (v: unknown) =>
+  v && typeof v === "object" && Object.keys(v as object).length > 0 ? v : undefined;
 
-function toFood(r: Row): DbFood {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    name: r.name,
-    baseUnit: r.base_unit === "mL" ? "mL" : "g",
-    refQty: Number(r.ref_qty) || 100,
-    kcal: Number(r.kcal) || 0,
-    protein: Number(r.protein) || 0,
-    carbs: Number(r.carbs) || 0,
-    fat: Number(r.fat) || 0,
-    brand: r.brand ?? undefined,
-    category: r.category ?? undefined,
-    archived: Boolean(r.archived),
-    createdAt: r.created_at,
-  };
-}
+const toConsultation = (r: Row): Consultation => ({
+  id: r.id,
+  clientId: r.client_id,
+  date: dateOnly(r.date),
+  consultationNumber: opt(r.consultation_number),
+  measurements: normalizeMeasurements(r.measurements),
+  foodHistory: emptyJson(r.food_history) as Consultation["foodHistory"],
+  energy: emptyJson(r.energy) as Consultation["energy"],
+  macros: emptyJson(r.macros) as Consultation["macros"],
+  notes: opt(r.notes),
+  planId: opt(r.plan_id),
+  consultationTypeId: opt(r.consultation_type_id),
+  createdAt: r.created_at,
+});
 
-function toRecipe(r: Row): Recipe {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    name: r.name,
-    servings: Number(r.servings) || 1,
-    preparation: r.preparation ?? undefined,
-    items: ((r.recipe_items ?? []) as Row[])
-      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-      .map((it) => ({ id: it.id, foodId: it.food_id, name: it.name ?? "", qty: Number(it.qty) || 0 })),
-    createdAt: r.created_at,
-  };
-}
+const toFood = (r: Row): DbFood => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  name: r.name,
+  baseUnit: r.base_unit === "mL" ? "mL" : "g",
+  refQty: Number(r.ref_qty) || 100,
+  kcal: Number(r.kcal) || 0,
+  protein: Number(r.protein) || 0,
+  carbs: Number(r.carbs) || 0,
+  fat: Number(r.fat) || 0,
+  brand: opt(r.brand),
+  category: opt(r.category),
+  archived: Boolean(r.archived),
+  createdAt: r.created_at,
+});
 
-function toConsultationType(r: Row): ConsultationType {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    name: r.name,
-    price: Number(r.price) || 0,
-    isDefault: Boolean(r.is_default),
-  };
-}
+const toRecipe = (r: Row): Recipe => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  name: r.name,
+  servings: Number(r.servings) || 1,
+  preparation: opt(r.preparation),
+  items: ((r.recipe_items ?? []) as Row[])
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    .map((it) => ({ id: it.id, foodId: it.food_id, name: it.name ?? "", qty: Number(it.qty) || 0 })),
+  createdAt: r.created_at,
+});
 
-function toBillingEntry(r: Row): BillingEntry {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    clientId: r.client_id ?? undefined,
-    consultationId: r.consultation_id ?? undefined,
-    clientName: r.client_name ?? "",
-    typeName: r.type_name ?? "",
-    amount: Number(r.amount) || 0,
-    date: typeof r.date === "string" ? r.date.slice(0, 10) : r.date,
-    status: r.status === "paid" ? "paid" : "pending",
-    notes: r.notes ?? undefined,
-    source: r.source === "auto" ? "auto" : "manual",
-    createdAt: r.created_at,
-  };
-}
+const toConsultationType = (r: Row): ConsultationType => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  name: r.name,
+  price: Number(r.price) || 0,
+  isDefault: Boolean(r.is_default),
+});
 
-function toPlan(r: Row): MealPlan {
-  return {
-    id: r.id,
-    clientId: r.client_id,
-    consultationId: r.consultation_id ?? undefined,
-    language: r.language === "en" ? "en" : "pt-PT",
-    pdfTemplateId: r.pdf_template_id ?? undefined,
-    meals: r.meals ?? [],
-    supplementation: r.supplementation ?? undefined,
-    notes: r.notes ?? undefined,
-    motivationalQuote: r.motivational_quote ?? undefined,
-    nextAppointment: r.next_appointment ?? undefined,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  };
-}
+const toBillingEntry = (r: Row): BillingEntry => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  clientId: opt(r.client_id),
+  consultationId: opt(r.consultation_id),
+  clientName: r.client_name ?? "",
+  typeName: r.type_name ?? "",
+  amount: Number(r.amount) || 0,
+  date: dateOnly(r.date),
+  status: r.status === "paid" ? "paid" : "pending",
+  notes: opt(r.notes),
+  source: r.source === "auto" ? "auto" : "manual",
+  createdAt: r.created_at,
+});
 
-function toRecommendation(r: Row): Recommendation {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    category: r.category,
-    title: r.title,
-    content: { "pt-PT": r.content?.["pt-PT"] ?? "", en: r.content?.en ?? "" },
-  };
-}
+const toPlan = (r: Row): MealPlan => ({
+  id: r.id,
+  clientId: r.client_id,
+  consultationId: opt(r.consultation_id),
+  language: r.language === "en" ? "en" : "pt-PT",
+  pdfTemplateId: opt(r.pdf_template_id),
+  meals: r.meals ?? [],
+  supplementation: opt(r.supplementation),
+  notes: opt(r.notes),
+  motivationalQuote: opt(r.motivational_quote),
+  nextAppointment: opt(r.next_appointment),
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
 
-function toTemplate(r: Row): PlanTemplate {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    name: r.name,
-    language: r.language === "en" ? "en" : "pt-PT",
-    meals: r.meals ?? [],
-    supplementation: r.supplementation ?? undefined,
-    notes: r.notes ?? undefined,
-  };
-}
+const toRecommendation = (r: Row): Recommendation => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  category: r.category,
+  title: r.title,
+  content: { "pt-PT": r.content?.["pt-PT"] ?? "", en: r.content?.en ?? "" },
+});
 
-function toPdfTemplate(r: Row): PdfTemplateFile {
-  return {
-    id: r.id,
-    nutritionistId: r.nutritionist_id,
-    name: r.name,
-    storagePath: r.storage_path,
-    createdAt: r.created_at,
-  };
-}
+const toTemplate = (r: Row): PlanTemplate => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  name: r.name,
+  language: r.language === "en" ? "en" : "pt-PT",
+  meals: r.meals ?? [],
+  supplementation: opt(r.supplementation),
+  notes: opt(r.notes),
+});
 
-function toAppointment(r: Row): Appointment {
-  return {
-    id: r.id,
-    clientId: r.client_id,
-    date: r.date,
-    durationMin: r.duration_min ?? undefined,
-    note: r.note ?? undefined,
-    status: r.status,
-    reminderEnabled: r.reminder_enabled,
-    reminderChannel: "sms",
-    reminderSentAt: r.reminder_sent_at ?? undefined,
-  };
-}
+const toPdfTemplate = (r: Row): PdfTemplateFile => ({
+  id: r.id,
+  nutritionistId: r.nutritionist_id,
+  name: r.name,
+  storagePath: r.storage_path,
+  createdAt: r.created_at,
+});
 
-function toSentMessage(r: Row): SentMessage {
-  return {
-    id: r.id,
-    appointmentId: r.appointment_id,
-    clientId: r.client_id,
-    to: r.to,
-    channel: "sms",
-    body: r.body,
-    status: r.status,
-    provider: r.provider,
-    createdAt: r.created_at,
-  };
-}
+const toAppointment = (r: Row): Appointment => ({
+  id: r.id,
+  clientId: r.client_id,
+  date: r.date,
+  durationMin: opt(r.duration_min),
+  note: opt(r.note),
+  status: r.status,
+  reminderEnabled: Boolean(r.reminder_enabled),
+  reminderChannel: "sms",
+  reminderSentAt: opt(r.reminder_sent_at),
+});
 
-function unwrap<T>(res: { data: T | null; error: { message: string } | null }): NonNullable<T> {
+const toSentMessage = (r: Row): SentMessage => ({
+  id: r.id,
+  appointmentId: r.appointment_id,
+  clientId: r.client_id,
+  to: r.to,
+  channel: "sms",
+  body: r.body,
+  status: r.status,
+  provider: r.provider,
+  createdAt: r.created_at,
+});
+
+type Res<T> = { data: T | null; error: { message: string } | null };
+
+function unwrap<T>(res: Res<T>): NonNullable<T> {
   if (res.error) throw new Error(res.error.message);
   return res.data as NonNullable<T>;
 }
 
+function maybe<T>(res: Res<T>): T | undefined {
+  if (res.error) throw new Error(res.error.message);
+  return res.data ?? undefined;
+}
+
+function check(res: { error: { message: string } | null }): void {
+  if (res.error) throw new Error(res.error.message);
+}
+
+/** Build a column patch from a camelCase patch: only defined keys, `"" → null`. */
+function columns<T extends object>(patch: T, map: Partial<Record<keyof T, string>>) {
+  const row: Record<string, unknown> = {};
+  for (const [k, col] of Object.entries(map) as [keyof T, string][]) {
+    const v = patch[k];
+    if (v !== undefined) row[col] = v === "" ? null : v;
+  }
+  return row;
+}
+
 // --- Auth ------------------------------------------------------------------
-export async function authenticate(
-  email: string,
-  password: string,
-): Promise<string | null> {
+/** True when the account has 2FA but this session has not passed the challenge. */
+async function mfaPending(supabase: SupabaseClient): Promise<boolean> {
+  const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  return data?.nextLevel === "aal2" && data.currentLevel !== "aal2";
+}
+
+export async function authenticate(email: string, password: string): Promise<AuthStatus> {
   const supabase = await db();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error || !data.user) return null;
-  return data.user.id;
-}
-
-export async function emailExists(_email?: string): Promise<boolean> {
-  // Cannot be checked anonymously under RLS; duplicate signups are rejected by
-  // Supabase Auth in createAccount instead.
-  return false;
-}
-
-export async function createAccount(data: {
-  name: string;
-  email: string;
-  password: string;
-}): Promise<string> {
-  const supabase = await db();
-  const { data: res, error } = await supabase.auth.signUp({
-    email: data.email,
-    password: data.password,
-    options: { data: { name: data.name } },
-  });
-  if (error) {
-    if (/already|exist|registered/i.test(error.message)) throw new Error("exists");
-    throw new Error(error.message);
-  }
-  const id = res.user?.id;
-  if (!id) throw new Error("signup-failed");
-  return id;
+  if (error || !data.user) return "invalid";
+  return (await mfaPending(supabase)) ? "mfa" : "ok";
 }
 
 export async function signOut(): Promise<void> {
-  const supabase = await db();
-  await supabase.auth.signOut();
+  await (await db()).auth.signOut();
 }
 
-/** Current tenant id if authenticated, else null (used by the layout guard). */
 export async function getAuthNid(): Promise<string | null> {
   const supabase = await db();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return user?.id ?? null;
+  if (!user || (await mfaPending(supabase))) return null;
+  return user.id;
+}
+
+export async function getLoginEmail(): Promise<string | null> {
+  const {
+    data: { user },
+  } = await (await db()).auth.getUser();
+  return user?.email ?? null;
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  // The link target lives in the Supabase email template (see README).
+  const { error } = await (await db()).auth.resetPasswordForEmail(email);
+  if (error) console.error("[alimea] password reset email failed", error.message);
+}
+
+export async function redeemEmailLink(tokenHash: string, type: EmailLinkType): Promise<boolean> {
+  const { error } = await (await db()).auth.verifyOtp({ token_hash: tokenHash, type });
+  return !error;
+}
+
+function passwordError(code: string | undefined): PasswordResult {
+  if (code === "weak_password") return "weak";
+  if (code === "same_password") return "same";
+  return "failed";
+}
+
+export async function setPassword(password: string): Promise<PasswordResult> {
+  const { error } = await (await db()).auth.updateUser({ password });
+  if (error) console.error("[alimea] set password failed", error.message);
+  return error ? passwordError(error.code) : "ok";
+}
+
+export async function changePassword(current: string, next: string): Promise<PasswordResult> {
+  const supabase = await db();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) return "failed";
+  // Check the current password on a throwaway client, so the cookie session
+  // (and its 2FA level) is left untouched.
+  const probe = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: wrong } = await probe.auth.signInWithPassword({ email: user.email, password: current });
+  if (wrong) return "invalid";
+  const { error } = await supabase.auth.updateUser({ password: next });
+  return error ? passwordError(error.code) : "ok";
+}
+
+export async function changeLoginEmail(email: string): Promise<EmailChangeResult> {
+  const { data, error } = await (await db()).auth.updateUser({ email });
+  if (error) return error.code === "email_exists" ? "exists" : "failed";
+  // With "confirm email change" on, the address only switches once the emailed
+  // link is opened.
+  return data.user?.email?.toLowerCase() === email.toLowerCase() ? "ok" : "confirm";
+}
+
+export async function getMfaStatus(): Promise<MfaStatus> {
+  const supabase = await db();
+  const { data } = await supabase.auth.mfa.listFactors();
+  return { supported: true, enabled: Boolean(data?.totp.length), pending: await mfaPending(supabase) };
+}
+
+export async function startMfaEnrollment(): Promise<MfaEnrollment | null> {
+  const supabase = await db();
+  // Drop half-finished enrolments, otherwise Supabase refuses a new one.
+  const { data: factors } = await supabase.auth.mfa.listFactors();
+  for (const f of factors?.all ?? []) {
+    if (f.status === "unverified") await supabase.auth.mfa.unenroll({ factorId: f.id });
+  }
+  const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: `Alimea ${Date.now()}` });
+  if (error || !data) return null;
+  return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
+}
+
+export async function verifyMfa(code: string, factorId?: string): Promise<boolean> {
+  const supabase = await db();
+  const id = factorId ?? (await supabase.auth.mfa.listFactors()).data?.totp[0]?.id;
+  if (!id) return false;
+  const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: id, code });
+  return !error;
+}
+
+export async function disableMfa(): Promise<boolean> {
+  const supabase = await db();
+  const { data } = await supabase.auth.mfa.listFactors();
+  for (const f of data?.all ?? []) {
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: f.id });
+    if (error) return false;
+  }
+  return true;
 }
 
 // --- Profile ---------------------------------------------------------------
 export async function getProfile(): Promise<NutritionistProfile> {
-  const nid = await currentNid();
   const supabase = await db();
-  const row = unwrap(
-    await supabase.from("profiles").select("*").eq("id", nid).single(),
-  );
-  return toProfile(row);
+  const id = await currentNid(supabase);
+  const row = maybe(await supabase.from("profiles").select("*").eq("id", id).maybeSingle());
+  if (row) return toProfile(row);
+  // Profile row missing (e.g. trigger not installed) — create it on the fly.
+  return toProfile(unwrap(await supabase.from("profiles").insert({ id }).select("*").single()));
 }
 
-export async function getProfileById(id: string): Promise<NutritionistProfile | undefined> {
-  const supabase = await resilientDb();
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", id).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toProfile(data) : undefined;
-}
-
-export async function updateProfile(
-  patch: Partial<NutritionistProfile>,
-): Promise<NutritionistProfile> {
-  const nid = await currentNid();
+export async function updateProfile(patch: Partial<Omit<NutritionistProfile, "id">>) {
   const supabase = await db();
-  const row: Record<string, unknown> = {};
-  if (patch.name !== undefined) row.name = patch.name;
-  if (patch.email !== undefined) row.email = patch.email;
-  if (patch.credential !== undefined) row.credential = patch.credential;
-  if (patch.instagram !== undefined) row.instagram = patch.instagram;
-  if (patch.phone !== undefined) row.phone = patch.phone;
-  if (patch.address !== undefined) row.address = patch.address;
-  if (patch.logoUrl !== undefined) row.logo_url = patch.logoUrl;
-  if (patch.pdfTemplate !== undefined) row.pdf_template = patch.pdfTemplate;
-  if (patch.interfaceLanguage !== undefined) row.interface_language = patch.interfaceLanguage;
-  const updated = unwrap(
-    await supabase.from("profiles").update(row).eq("id", nid).select("*").single(),
-  );
-  return toProfile(updated);
+  const id = await currentNid(supabase);
+  const row = columns(patch, {
+    name: "name",
+    email: "email",
+    credential: "credential",
+    instagram: "instagram",
+    phone: "phone",
+    address: "address",
+    logoUrl: "logo_url",
+    pdfTemplate: "pdf_template",
+    interfaceLanguage: "interface_language",
+  });
+  // name/email/credential are NOT NULL in the schema.
+  for (const k of ["name", "email", "credential"]) if (row[k] === null) row[k] = "";
+  return toProfile(unwrap(await supabase.from("profiles").update(row).eq("id", id).select("*").single()));
 }
 
 // --- Clients ---------------------------------------------------------------
+const CLIENT_COLUMNS = {
+  name: "name",
+  email: "email",
+  phone: "phone",
+  birthDate: "birth_date",
+  sex: "sex",
+  ethnicity: "ethnicity",
+  profession: "profession",
+  goals: "goals",
+  notes: "notes",
+  anamnesis: "anamnesis",
+} as const;
+
 export async function listClients(): Promise<Client[]> {
-  const supabase = await db();
-  const rows = unwrap(
-    await supabase.from("clients").select("*").order("name", { ascending: true }),
-  );
+  const rows = unwrap(await (await db()).from("clients").select("*").order("name"));
   return (rows as Row[]).map(toClient);
 }
 
-export async function getClient(id: string): Promise<Client | undefined> {
-  const supabase = await resilientDb();
-  const { data, error } = await supabase.from("clients").select("*").eq("id", id).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toClient(data) : undefined;
+export async function getClient(id: string) {
+  const row = maybe(await (await db()).from("clients").select("*").eq("id", id).maybeSingle());
+  return row ? toClient(row) : undefined;
 }
 
-export async function createClient(
-  data: Omit<Client, "id" | "nutritionistId" | "createdAt">,
-): Promise<Client> {
-  const nid = await currentNid();
+export async function createClient(data: NewClient): Promise<Client> {
   const supabase = await db();
-  const row = unwrap(
-    await supabase
-      .from("clients")
-      .insert({
-        nutritionist_id: nid,
-        name: data.name,
-        email: data.email ?? null,
-        phone: data.phone ?? null,
-        birth_date: data.birthDate ?? null,
-        sex: data.sex ?? null,
-        ethnicity: data.ethnicity ?? null,
-        profession: data.profession ?? null,
-        goals: data.goals ?? null,
-        notes: data.notes ?? null,
-        anamnesis: data.anamnesis ?? {},
-      })
-      .select("*")
-      .single(),
-  );
-  return toClient(row);
+  const row: Record<string, unknown> = { nutritionist_id: await currentNid(supabase), ...columns(data, CLIENT_COLUMNS) };
+  if (!row.anamnesis) row.anamnesis = {};
+  return toClient(unwrap(await supabase.from("clients").insert(row).select("*").single()));
 }
 
-export async function updateClient(
-  id: string,
-  patch: Partial<Client>,
-): Promise<Client | undefined> {
-  const supabase = await db();
-  const row: Record<string, unknown> = {};
-  if (patch.name !== undefined) row.name = patch.name;
-  if (patch.email !== undefined) row.email = patch.email;
-  if (patch.phone !== undefined) row.phone = patch.phone;
-  if (patch.birthDate !== undefined) row.birth_date = patch.birthDate;
-  if (patch.sex !== undefined) row.sex = patch.sex;
-  if (patch.ethnicity !== undefined) row.ethnicity = patch.ethnicity;
-  if (patch.profession !== undefined) row.profession = patch.profession;
-  if (patch.goals !== undefined) row.goals = patch.goals;
-  if (patch.notes !== undefined) row.notes = patch.notes;
-  if (patch.anamnesis !== undefined) row.anamnesis = patch.anamnesis;
-  const { data, error } = await supabase
-    .from("clients")
-    .update(row)
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+export async function updateClient(id: string, patch: Partial<NewClient>) {
+  const row = columns(patch, CLIENT_COLUMNS);
+  if (!Object.keys(row).length) return getClient(id);
+  if (row.name === null) delete row.name; // NOT NULL
+  const res = await (await db()).from("clients").update(row).eq("id", id).select("*").maybeSingle();
+  const data = maybe(res);
   return data ? toClient(data) : undefined;
 }
 
 export async function deleteClient(id: string): Promise<void> {
-  const supabase = await db();
-  // Consultations and meal_plans cascade via FK on delete.
-  const { error } = await supabase.from("clients").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  // consultations, plans, appointments and messages cascade via FK.
+  check(await (await db()).from("clients").delete().eq("id", id));
 }
 
 // --- Consultations ---------------------------------------------------------
 export async function listConsultations(clientId: string): Promise<Consultation[]> {
-  const supabase = await db();
   const rows = unwrap(
-    await supabase
-      .from("consultations")
-      .select("*")
-      .eq("client_id", clientId)
-      .order("date", { ascending: false }),
+    await (await db()).from("consultations").select("*").eq("client_id", clientId),
   );
-  return (rows as Row[]).map(toConsultation);
+  return (rows as Row[]).map(toConsultation).sort(byNewest);
 }
 
-export async function getConsultation(id: string): Promise<Consultation | undefined> {
-  const supabase = await db();
-  const { data, error } = await supabase
-    .from("consultations")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toConsultation(data) : undefined;
+export async function listAllConsultations(): Promise<Consultation[]> {
+  const rows = unwrap(await (await db()).from("consultations").select("*"));
+  return (rows as Row[]).map(toConsultation).sort(byNewest);
 }
 
-export async function getLastConsultation(
-  clientId: string,
-): Promise<Consultation | undefined> {
-  return (await listConsultations(clientId))[0];
+export async function getConsultation(id: string) {
+  const row = maybe(await (await db()).from("consultations").select("*").eq("id", id).maybeSingle());
+  return row ? toConsultation(row) : undefined;
 }
 
 export async function createConsultation(
   clientId: string,
-  opts: { duplicateLast?: boolean; consultationTypeId?: string } = {},
+  opts: { duplicateFrom?: Consultation; consultationTypeId?: string; date?: string } = {},
 ): Promise<Consultation> {
   const supabase = await db();
-  const existing = await listConsultations(clientId);
-  const last = opts.duplicateLast ? existing[0] : undefined;
+  const client = await getClient(clientId);
+  if (!client) throw new Error("Client not found");
+  const { count } = await supabase
+    .from("consultations")
+    .select("id", { count: "exact", head: true })
+    .eq("client_id", clientId);
+  const last = opts.duplicateFrom;
   const typeId = opts.consultationTypeId ?? last?.consultationTypeId;
-  const row = unwrap(
-    await supabase
-      .from("consultations")
-      .insert({
-        client_id: clientId,
-        date: new Date().toISOString().slice(0, 10),
-        consultation_number: existing.length + 1,
-        measurements: last ? last.measurements : { perimeters: {}, skinfolds: {} },
-        food_history: last?.foodHistory ?? {},
-        notes: "",
-        consultation_type_id: typeId ?? null,
-      })
-      .select("*")
-      .single(),
+  const consult = toConsultation(
+    unwrap(
+      await supabase
+        .from("consultations")
+        .insert({
+          client_id: clientId,
+          date: opts.date ?? todayISO(),
+          consultation_number: (count ?? 0) + 1,
+          measurements: last ? normalizeMeasurements(last.measurements) : emptyMeasurements(),
+          food_history: last?.foodHistory ?? {},
+          energy: last?.energy ? { ...last.energy, targetKcal: undefined } : {},
+          macros: last?.macros ?? {},
+          notes: "",
+          consultation_type_id: typeId ?? null,
+        })
+        .select("*")
+        .single(),
+    ),
   );
-  const consult = toConsultation(row);
-  await createBillingForConsultation(consult, typeId);
-  return consult;
-}
 
-/** Auto-create the billing entry for a freshly held consultation. */
-async function createBillingForConsultation(
-  consult: Consultation,
-  typeId?: string,
-): Promise<void> {
-  const nid = await currentNid();
-  const supabase = await db();
-  const types = await listConsultationTypes();
-  const type = typeId ? types.find((t) => t.id === typeId) : types[0];
-  const client = await getClient(consult.clientId);
-  // A freshly created consultation can't already have a billing row; a plain
-  // insert avoids ON CONFLICT inference issues with the partial unique index.
-  const { error } = await supabase.from("billing_entries").insert({
-    nutritionist_id: nid,
-    client_id: consult.clientId,
-    consultation_id: consult.id,
-    client_name: client?.name ?? "",
-    type_name: type?.name ?? "",
-    amount: type?.price ?? 0,
-    date: consult.date,
-    status: "pending",
-    source: "auto",
-  });
-  if (error) throw new Error(error.message);
+  // Auto-create the billing entry. A failure here must not lose the consultation.
+  try {
+    const types = await listConsultationTypes();
+    const type = types.find((t) => t.id === typeId) ?? types[0];
+    check(
+      await supabase.from("billing_entries").insert({
+        nutritionist_id: client.nutritionistId,
+        client_id: clientId,
+        consultation_id: consult.id,
+        client_name: client.name,
+        type_name: type?.name ?? "",
+        amount: type?.price ?? 0,
+        date: consult.date,
+        status: "pending",
+        source: "auto",
+      }),
+    );
+  } catch (e) {
+    console.error("[alimea] auto billing failed for consultation", consult.id, e);
+  }
+  return consult;
 }
 
 export async function updateConsultation(
   id: string,
-  patch: Partial<Consultation>,
-): Promise<Consultation | undefined> {
-  const supabase = await db();
-  const row: Record<string, unknown> = {};
-  if (patch.date !== undefined) row.date = patch.date;
-  if (patch.notes !== undefined) row.notes = patch.notes;
-  if (patch.consultationNumber !== undefined) row.consultation_number = patch.consultationNumber;
-  if (patch.measurements !== undefined) row.measurements = patch.measurements;
-  if (patch.foodHistory !== undefined) row.food_history = patch.foodHistory;
-  if (patch.energy !== undefined) row.energy = patch.energy;
-  if (patch.macros !== undefined) row.macros = patch.macros;
-  if (patch.planId !== undefined) row.plan_id = patch.planId;
-  if (patch.consultationTypeId !== undefined) row.consultation_type_id = patch.consultationTypeId;
-  const { data, error } = await supabase
-    .from("consultations")
-    .update(row)
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  patch: Partial<Omit<Consultation, "id" | "clientId" | "createdAt">>,
+) {
+  const row = columns(
+    { ...patch, measurements: patch.measurements && normalizeMeasurements(patch.measurements) },
+    {
+      date: "date",
+      notes: "notes",
+      consultationNumber: "consultation_number",
+      measurements: "measurements",
+      foodHistory: "food_history",
+      energy: "energy",
+      macros: "macros",
+      planId: "plan_id",
+      consultationTypeId: "consultation_type_id",
+    },
+  );
+  if (!Object.keys(row).length) return getConsultation(id);
+  const data = maybe(await (await db()).from("consultations").update(row).eq("id", id).select("*").maybeSingle());
   return data ? toConsultation(data) : undefined;
+}
+
+export async function deleteConsultation(id: string): Promise<void> {
+  const supabase = await db();
+  check(await supabase.from("meal_plans").delete().eq("consultation_id", id));
+  check(
+    await supabase
+      .from("billing_entries")
+      .delete()
+      .eq("consultation_id", id)
+      .eq("source", "auto")
+      .eq("status", "pending"),
+  );
+  check(await supabase.from("consultations").delete().eq("id", id));
 }
 
 // --- Consultation types & billing ------------------------------------------
 export async function listConsultationTypes(): Promise<ConsultationType[]> {
-  const nid = await currentNid();
   const supabase = await db();
   const rows = unwrap(
-    await supabase
-      .from("consultation_types")
-      .select("*")
-      .order("created_at", { ascending: true }),
+    await supabase.from("consultation_types").select("*").order("created_at", { ascending: true }),
   ) as Row[];
-  if (rows.length === 0) {
-    // Lazily seed the built-in types the first time a tenant needs them.
-    const seeded = unwrap(
-      await supabase
-        .from("consultation_types")
-        .insert(
-          DEFAULT_CONSULTATION_TYPES.map((t) => ({
-            nutritionist_id: nid,
-            name: t.name,
-            price: t.price,
-            is_default: true,
-          })),
-        )
-        .select("*"),
-    ) as Row[];
-    return seeded.map(toConsultationType);
-  }
-  return rows.map(toConsultationType);
-}
-
-export async function createConsultationType(data: {
-  name: string;
-  price: number;
-}): Promise<ConsultationType> {
-  const nid = await currentNid();
-  const supabase = await db();
-  const row = unwrap(
+  if (rows.length) return rows.map(toConsultationType);
+  // Lazily seed the built-in types the first time a tenant needs them.
+  const nid = await currentNid(supabase);
+  const seeded = unwrap(
     await supabase
       .from("consultation_types")
-      .insert({ nutritionist_id: nid, name: data.name, price: data.price, is_default: false })
-      .select("*")
-      .single(),
-  );
-  return toConsultationType(row);
+      .insert(DEFAULT_CONSULTATION_TYPES.map((t) => ({ nutritionist_id: nid, ...t, is_default: true })))
+      .select("*"),
+  ) as Row[];
+  return seeded.map(toConsultationType);
 }
 
-export async function updateConsultationType(
-  id: string,
-  patch: { name?: string; price?: number },
-): Promise<ConsultationType | undefined> {
+export async function createConsultationType(data: { name: string; price: number }) {
   const supabase = await db();
-  const row: Record<string, unknown> = {};
-  if (patch.name !== undefined) row.name = patch.name;
-  if (patch.price !== undefined) row.price = patch.price;
-  const { data, error } = await supabase
-    .from("consultation_types")
-    .update(row)
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  const row = { nutritionist_id: await currentNid(supabase), ...data, is_default: false };
+  return toConsultationType(unwrap(await supabase.from("consultation_types").insert(row).select("*").single()));
+}
+
+export async function updateConsultationType(id: string, patch: { name?: string; price?: number }) {
+  const data = maybe(
+    await (await db()).from("consultation_types").update(columns(patch, { name: "name", price: "price" })).eq("id", id).select("*").maybeSingle(),
+  );
   return data ? toConsultationType(data) : undefined;
 }
 
 export async function deleteConsultationType(id: string): Promise<void> {
-  const supabase = await db();
-  const { error } = await supabase.from("consultation_types").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  check(await (await db()).from("consultation_types").delete().eq("id", id));
 }
 
 export async function listBillingEntries(): Promise<BillingEntry[]> {
-  const supabase = await db();
-  const rows = unwrap(
-    await supabase.from("billing_entries").select("*").order("date", { ascending: false }),
-  ) as Row[];
-  return rows.map(toBillingEntry);
+  const rows = unwrap(await (await db()).from("billing_entries").select("*")) as Row[];
+  return rows.map(toBillingEntry).sort(byNewest);
 }
 
-export async function createBillingEntry(data: {
-  clientId?: string;
-  clientName: string;
-  typeName: string;
-  amount: number;
-  date: string;
-  status?: "pending" | "paid";
-  notes?: string;
-}): Promise<BillingEntry> {
-  const nid = await currentNid();
+export async function createBillingEntry(data: NewBillingEntry): Promise<BillingEntry> {
   const supabase = await db();
-  const row = unwrap(
-    await supabase
-      .from("billing_entries")
-      .insert({
-        nutritionist_id: nid,
-        client_id: data.clientId ?? null,
-        client_name: data.clientName,
-        type_name: data.typeName,
-        amount: data.amount,
-        date: data.date,
-        status: data.status ?? "pending",
-        notes: data.notes ?? null,
-        source: "manual",
-      })
-      .select("*")
-      .single(),
-  );
-  return toBillingEntry(row);
+  const row = {
+    nutritionist_id: await currentNid(supabase),
+    client_id: data.clientId ?? null,
+    client_name: data.clientName,
+    type_name: data.typeName,
+    amount: data.amount,
+    date: data.date,
+    status: data.status ?? "pending",
+    notes: data.notes ?? null,
+    source: "manual",
+  };
+  return toBillingEntry(unwrap(await supabase.from("billing_entries").insert(row).select("*").single()));
 }
 
-export async function updateBillingEntry(
-  id: string,
-  patch: Partial<Pick<BillingEntry, "clientName" | "typeName" | "amount" | "date" | "status" | "notes">>,
-): Promise<BillingEntry | undefined> {
-  const supabase = await db();
-  const row: Record<string, unknown> = {};
-  if (patch.clientName !== undefined) row.client_name = patch.clientName;
-  if (patch.typeName !== undefined) row.type_name = patch.typeName;
-  if (patch.amount !== undefined) row.amount = patch.amount;
-  if (patch.date !== undefined) row.date = patch.date;
-  if (patch.status !== undefined) row.status = patch.status;
-  if (patch.notes !== undefined) row.notes = patch.notes;
-  const { data, error } = await supabase
-    .from("billing_entries")
-    .update(row)
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+export async function updateBillingEntry(id: string, patch: BillingPatch) {
+  const row = columns(patch, {
+    clientName: "client_name",
+    typeName: "type_name",
+    amount: "amount",
+    date: "date",
+    status: "status",
+    notes: "notes",
+  });
+  for (const k of ["client_name", "type_name"]) if (row[k] === null) row[k] = "";
+  const data = maybe(await (await db()).from("billing_entries").update(row).eq("id", id).select("*").maybeSingle());
   return data ? toBillingEntry(data) : undefined;
 }
 
 export async function deleteBillingEntry(id: string): Promise<void> {
-  const supabase = await db();
-  const { error } = await supabase.from("billing_entries").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  check(await (await db()).from("billing_entries").delete().eq("id", id));
 }
 
 // --- Plans -----------------------------------------------------------------
 export async function listPlans(clientId?: string): Promise<MealPlan[]> {
-  const supabase = await db();
-  let query = supabase.from("meal_plans").select("*").order("updated_at", { ascending: false });
+  let query = (await db()).from("meal_plans").select("*").order("updated_at", { ascending: false });
   if (clientId) query = query.eq("client_id", clientId);
-  const rows = unwrap(await query);
-  return (rows as Row[]).map(toPlan);
+  return (unwrap(await query) as Row[]).map(toPlan);
 }
 
-export async function getPlan(id: string): Promise<MealPlan | undefined> {
-  const supabase = await db();
-  const { data, error } = await supabase.from("meal_plans").select("*").eq("id", id).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toPlan(data) : undefined;
+export async function getPlan(id: string) {
+  const row = maybe(await (await db()).from("meal_plans").select("*").eq("id", id).maybeSingle());
+  return row ? toPlan(row) : undefined;
 }
 
-export async function createPlan(
-  data: Partial<MealPlan> & { clientId: string },
-): Promise<MealPlan> {
+export async function createPlan(data: Partial<MealPlan> & { clientId: string }): Promise<MealPlan> {
   const supabase = await db();
-  const plan = unwrap(
-    await supabase
-      .from("meal_plans")
-      .insert({
-        client_id: data.clientId,
-        consultation_id: data.consultationId ?? null,
-        language: data.language ?? "pt-PT",
-        pdf_template_id: data.pdfTemplateId ?? "classic",
-        meals: data.meals ?? [],
-        supplementation: data.supplementation ?? "",
-        notes: data.notes ?? "",
-        motivational_quote: data.motivationalQuote ?? "",
-        next_appointment: data.nextAppointment ?? "",
-      })
-      .select("*")
-      .single(),
+  const plan = toPlan(
+    unwrap(
+      await supabase
+        .from("meal_plans")
+        .insert({
+          client_id: data.clientId,
+          consultation_id: data.consultationId ?? null,
+          language: data.language ?? "pt-PT",
+          pdf_template_id: data.pdfTemplateId ?? "classic",
+          meals: data.meals ?? [],
+          supplementation: data.supplementation ?? "",
+          notes: data.notes ?? "",
+          motivational_quote: data.motivationalQuote ?? "",
+          next_appointment: data.nextAppointment ?? "",
+        })
+        .select("*")
+        .single(),
+    ),
   );
-  const mapped = toPlan(plan);
-  if (mapped.consultationId) {
-    await supabase
-      .from("consultations")
-      .update({ plan_id: mapped.id })
-      .eq("id", mapped.consultationId);
+  if (plan.consultationId) {
+    check(await supabase.from("consultations").update({ plan_id: plan.id }).eq("id", plan.consultationId));
   }
-  return mapped;
+  return plan;
 }
 
 export async function updatePlan(
   id: string,
-  patch: Partial<MealPlan>,
-): Promise<MealPlan | undefined> {
-  const supabase = await db();
-  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (patch.clientId !== undefined) row.client_id = patch.clientId;
-  if (patch.consultationId !== undefined) row.consultation_id = patch.consultationId;
-  if (patch.language !== undefined) row.language = patch.language;
-  if (patch.pdfTemplateId !== undefined) row.pdf_template_id = patch.pdfTemplateId;
-  if (patch.meals !== undefined) row.meals = patch.meals;
-  if (patch.supplementation !== undefined) row.supplementation = patch.supplementation;
-  if (patch.notes !== undefined) row.notes = patch.notes;
-  if (patch.motivationalQuote !== undefined) row.motivational_quote = patch.motivationalQuote;
-  if (patch.nextAppointment !== undefined) row.next_appointment = patch.nextAppointment;
-  const { data, error } = await supabase
-    .from("meal_plans")
-    .update(row)
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  patch: Partial<Omit<MealPlan, "id" | "clientId" | "createdAt" | "updatedAt">>,
+) {
+  const row = {
+    ...columns(patch, {
+      consultationId: "consultation_id",
+      language: "language",
+      pdfTemplateId: "pdf_template_id",
+      meals: "meals",
+      supplementation: "supplementation",
+      notes: "notes",
+      motivationalQuote: "motivational_quote",
+      nextAppointment: "next_appointment",
+    }),
+    updated_at: new Date().toISOString(),
+  };
+  const data = maybe(await (await db()).from("meal_plans").update(row).eq("id", id).select("*").maybeSingle());
   return data ? toPlan(data) : undefined;
 }
 
-export async function duplicatePlan(
-  id: string,
-  overrides: Partial<MealPlan> = {},
-): Promise<MealPlan | undefined> {
-  const src = await getPlan(id);
-  if (!src) return undefined;
-  return createPlan({
-    ...src,
-    ...overrides,
-    consultationId: overrides.consultationId,
-    clientId: overrides.clientId ?? src.clientId,
-  });
+export async function deletePlan(id: string): Promise<void> {
+  const supabase = await db();
+  check(await supabase.from("consultations").update({ plan_id: null }).eq("plan_id", id));
+  check(await supabase.from("meal_plans").delete().eq("id", id));
 }
 
-// --- Foods database (BOO-57) -----------------------------------------------
+// --- Foods & recipes -------------------------------------------------------
+const FOOD_COLUMNS = {
+  name: "name",
+  baseUnit: "base_unit",
+  refQty: "ref_qty",
+  kcal: "kcal",
+  protein: "protein",
+  carbs: "carbs",
+  fat: "fat",
+  brand: "brand",
+  category: "category",
+  archived: "archived",
+} as const;
+
 export async function listFoods(opts: { includeArchived?: boolean } = {}): Promise<DbFood[]> {
-  const supabase = await db();
-  let query = supabase.from("foods").select("*").order("name", { ascending: true });
+  let query = (await db()).from("foods").select("*").order("name");
   if (!opts.includeArchived) query = query.eq("archived", false);
-  const rows = unwrap(await query);
-  return (rows as Row[]).map(toFood);
+  return (unwrap(await query) as Row[]).map(toFood);
 }
 
-export async function getFood(id: string): Promise<DbFood | undefined> {
+export async function createFood(data: NewFood): Promise<DbFood> {
   const supabase = await db();
-  const { data, error } = await supabase.from("foods").select("*").eq("id", id).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toFood(data) : undefined;
+  const row = { nutritionist_id: await currentNid(supabase), archived: false, ...columns(data, FOOD_COLUMNS) };
+  return toFood(unwrap(await supabase.from("foods").insert(row).select("*").single()));
 }
 
-export async function createFood(
-  data: Omit<DbFood, "id" | "nutritionistId" | "createdAt" | "archived"> &
-    Partial<Pick<DbFood, "archived">>,
-): Promise<DbFood> {
-  const nid = await currentNid();
-  const supabase = await db();
-  const row = unwrap(
-    await supabase
-      .from("foods")
-      .insert({
-        nutritionist_id: nid,
-        name: data.name,
-        base_unit: data.baseUnit,
-        ref_qty: data.refQty,
-        kcal: data.kcal,
-        protein: data.protein,
-        carbs: data.carbs,
-        fat: data.fat,
-        brand: data.brand ?? null,
-        category: data.category ?? null,
-        archived: data.archived ?? false,
-      })
-      .select("*")
-      .single(),
+export async function updateFood(id: string, patch: Partial<NewFood>) {
+  const data = maybe(
+    await (await db()).from("foods").update(columns(patch, FOOD_COLUMNS)).eq("id", id).select("*").maybeSingle(),
   );
-  return toFood(row);
-}
-
-export async function updateFood(id: string, patch: Partial<DbFood>): Promise<DbFood | undefined> {
-  const supabase = await db();
-  const row: Record<string, unknown> = {};
-  if (patch.name !== undefined) row.name = patch.name;
-  if (patch.baseUnit !== undefined) row.base_unit = patch.baseUnit;
-  if (patch.refQty !== undefined) row.ref_qty = patch.refQty;
-  if (patch.kcal !== undefined) row.kcal = patch.kcal;
-  if (patch.protein !== undefined) row.protein = patch.protein;
-  if (patch.carbs !== undefined) row.carbs = patch.carbs;
-  if (patch.fat !== undefined) row.fat = patch.fat;
-  if (patch.brand !== undefined) row.brand = patch.brand;
-  if (patch.category !== undefined) row.category = patch.category;
-  if (patch.archived !== undefined) row.archived = patch.archived;
-  const { data, error } = await supabase.from("foods").update(row).eq("id", id).select("*").maybeSingle();
-  if (error) throw new Error(error.message);
   return data ? toFood(data) : undefined;
 }
 
-export async function deleteFood(id: string): Promise<void> {
-  const supabase = await db();
-  const { error } = await supabase.from("foods").delete().eq("id", id);
-  if (error) throw new Error(error.message);
-}
-
-// --- Recipes (BOO-58) ------------------------------------------------------
 export async function listRecipes(): Promise<Recipe[]> {
-  const supabase = await db();
-  const rows = unwrap(
-    await supabase.from("recipes").select("*, recipe_items(*)").order("name", { ascending: true }),
-  );
+  const rows = unwrap(await (await db()).from("recipes").select("*, recipe_items(*)").order("name"));
   return (rows as Row[]).map(toRecipe);
 }
 
-export async function getRecipe(id: string): Promise<Recipe | undefined> {
-  const supabase = await db();
-  const { data, error } = await supabase
-    .from("recipes")
-    .select("*, recipe_items(*)")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toRecipe(data) : undefined;
+async function getRecipe(id: string) {
+  const row = maybe(
+    await (await db()).from("recipes").select("*, recipe_items(*)").eq("id", id).maybeSingle(),
+  );
+  return row ? toRecipe(row) : undefined;
 }
 
-async function replaceRecipeItems(recipeId: string, items: Recipe["items"]): Promise<void> {
-  const supabase = await db();
-  await supabase.from("recipe_items").delete().eq("recipe_id", recipeId);
-  if (items.length) {
-    const { error } = await supabase.from("recipe_items").insert(
-      items.map((it, i) => ({
-        recipe_id: recipeId,
-        food_id: it.foodId,
-        name: it.name,
-        qty: it.qty,
-        position: i,
-      })),
-    );
-    if (error) throw new Error(error.message);
-  }
+async function replaceRecipeItems(supabase: SupabaseClient, recipeId: string, items: Recipe["items"]) {
+  check(await supabase.from("recipe_items").delete().eq("recipe_id", recipeId));
+  if (!items.length) return;
+  check(
+    await supabase.from("recipe_items").insert(
+      items.map((it, i) => ({ recipe_id: recipeId, food_id: it.foodId, name: it.name, qty: it.qty, position: i })),
+    ),
+  );
 }
 
-export async function createRecipe(
-  data: Omit<Recipe, "id" | "nutritionistId" | "createdAt">,
-): Promise<Recipe> {
-  const nid = await currentNid();
+export async function createRecipe(data: NewRecipe): Promise<Recipe> {
   const supabase = await db();
   const row = unwrap(
     await supabase
       .from("recipes")
       .insert({
-        nutritionist_id: nid,
+        nutritionist_id: await currentNid(supabase),
         name: data.name,
         servings: data.servings,
         preparation: data.preparation ?? null,
@@ -879,284 +770,226 @@ export async function createRecipe(
       .select("*")
       .single(),
   ) as Row;
-  await replaceRecipeItems(row.id, data.items ?? []);
+  await replaceRecipeItems(supabase, row.id, data.items ?? []);
   return (await getRecipe(row.id))!;
 }
 
-export async function updateRecipe(id: string, patch: Partial<Recipe>): Promise<Recipe | undefined> {
+export async function updateRecipe(id: string, patch: Partial<NewRecipe>) {
   const supabase = await db();
-  const row: Record<string, unknown> = {};
-  if (patch.name !== undefined) row.name = patch.name;
-  if (patch.servings !== undefined) row.servings = patch.servings;
-  if (patch.preparation !== undefined) row.preparation = patch.preparation;
-  if (Object.keys(row).length) {
-    const { error } = await supabase.from("recipes").update(row).eq("id", id);
-    if (error) throw new Error(error.message);
-  }
-  if (patch.items !== undefined) await replaceRecipeItems(id, patch.items);
+  const row = columns(patch, { name: "name", servings: "servings", preparation: "preparation" });
+  if (Object.keys(row).length) check(await supabase.from("recipes").update(row).eq("id", id));
+  if (patch.items !== undefined) await replaceRecipeItems(supabase, id, patch.items);
   return getRecipe(id);
 }
 
 export async function deleteRecipe(id: string): Promise<void> {
-  const supabase = await db();
-  const { error } = await supabase.from("recipes").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  check(await (await db()).from("recipes").delete().eq("id", id));
 }
 
-// --- Recommendations -------------------------------------------------------
+// --- Recommendations & templates ------------------------------------------
 export async function listRecommendations(): Promise<Recommendation[]> {
-  const supabase = await db();
-  const rows = unwrap(await supabase.from("recommendations").select("*"));
+  const rows = unwrap(await (await db()).from("recommendations").select("*").order("created_at"));
   return (rows as Row[]).map(toRecommendation);
 }
 
-export async function createRecommendation(
-  data: Omit<Recommendation, "id" | "nutritionistId">,
-): Promise<Recommendation> {
-  const nid = await currentNid();
+export async function createRecommendation(data: Omit<Recommendation, "id" | "nutritionistId">) {
   const supabase = await db();
-  const row = unwrap(
-    await supabase
-      .from("recommendations")
-      .insert({
-        nutritionist_id: nid,
-        category: data.category,
-        title: data.title,
-        content: data.content,
-      })
-      .select("*")
-      .single(),
-  );
-  return toRecommendation(row);
+  const row = { nutritionist_id: await currentNid(supabase), ...data };
+  return toRecommendation(unwrap(await supabase.from("recommendations").insert(row).select("*").single()));
 }
 
-// --- Templates -------------------------------------------------------------
+export async function updateRecommendation(id: string, patch: Partial<Omit<Recommendation, "id" | "nutritionistId">>) {
+  const row = columns(patch, { category: "category", title: "title", content: "content" });
+  const data = maybe(await (await db()).from("recommendations").update(row).eq("id", id).select("*").maybeSingle());
+  return data ? toRecommendation(data) : undefined;
+}
+
+export async function deleteRecommendation(id: string): Promise<void> {
+  check(await (await db()).from("recommendations").delete().eq("id", id));
+}
+
 export async function listTemplates(): Promise<PlanTemplate[]> {
-  const supabase = await db();
-  const rows = unwrap(await supabase.from("plan_templates").select("*"));
+  const rows = unwrap(await (await db()).from("plan_templates").select("*").order("created_at"));
   return (rows as Row[]).map(toTemplate);
 }
 
-export async function getTemplate(id: string): Promise<PlanTemplate | undefined> {
+export async function createTemplate(data: Omit<PlanTemplate, "id" | "nutritionistId">) {
   const supabase = await db();
-  const { data, error } = await supabase
-    .from("plan_templates")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  const row = {
+    nutritionist_id: await currentNid(supabase),
+    name: data.name,
+    language: data.language,
+    meals: data.meals,
+    supplementation: data.supplementation ?? null,
+    notes: data.notes ?? null,
+  };
+  return toTemplate(unwrap(await supabase.from("plan_templates").insert(row).select("*").single()));
+}
+
+export async function updateTemplate(id: string, patch: Partial<Omit<PlanTemplate, "id" | "nutritionistId">>) {
+  const row = columns(patch, {
+    name: "name",
+    language: "language",
+    meals: "meals",
+    supplementation: "supplementation",
+    notes: "notes",
+  });
+  const data = maybe(await (await db()).from("plan_templates").update(row).eq("id", id).select("*").maybeSingle());
   return data ? toTemplate(data) : undefined;
 }
 
-export async function createTemplate(
-  data: Omit<PlanTemplate, "id" | "nutritionistId">,
-): Promise<PlanTemplate> {
-  const nid = await currentNid();
-  const supabase = await db();
-  const row = unwrap(
-    await supabase
-      .from("plan_templates")
-      .insert({
-        nutritionist_id: nid,
-        name: data.name,
-        language: data.language,
-        meals: data.meals,
-        supplementation: data.supplementation ?? null,
-        notes: data.notes ?? null,
-      })
-      .select("*")
-      .single(),
-  );
-  return toTemplate(row);
+export async function deleteTemplate(id: string): Promise<void> {
+  check(await (await db()).from("plan_templates").delete().eq("id", id));
 }
 
-// --- Appointments ----------------------------------------------------------
+// --- Appointments & SMS ----------------------------------------------------
 export async function listAppointments(): Promise<Appointment[]> {
-  const supabase = await db();
-  const rows = unwrap(
-    await supabase.from("appointments").select("*").order("date", { ascending: true }),
-  );
+  const rows = unwrap(await (await db()).from("appointments").select("*").order("date"));
   return (rows as Row[]).map(toAppointment);
 }
 
-/** All appointments across tenants — reminder cron only (service role). */
-export async function listAllAppointments(): Promise<Appointment[]> {
-  const admin = createSupabaseAdminClient();
-  const supabase = admin ?? (await db());
-  const rows = unwrap(
-    await supabase.from("appointments").select("*").order("date", { ascending: true }),
-  );
-  return (rows as Row[]).map(toAppointment);
+export async function getAppointment(id: string) {
+  const row = maybe(await (await db()).from("appointments").select("*").eq("id", id).maybeSingle());
+  return row ? toAppointment(row) : undefined;
 }
 
-export async function getAppointment(id: string): Promise<Appointment | undefined> {
-  const supabase = await db();
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toAppointment(data) : undefined;
+export async function createAppointment(data: NewAppointment): Promise<Appointment> {
+  const row = {
+    client_id: data.clientId,
+    date: data.date,
+    duration_min: data.durationMin ?? 45,
+    note: data.note ?? null,
+    status: data.status ?? "scheduled",
+    reminder_enabled: data.reminderEnabled ?? true,
+    reminder_channel: "sms",
+    reminder_sent_at: data.reminderSentAt ?? null,
+  };
+  return toAppointment(unwrap(await (await db()).from("appointments").insert(row).select("*").single()));
 }
 
-export async function createAppointment(
-  data: Omit<Appointment, "id" | "status" | "reminderChannel"> &
-    Partial<Pick<Appointment, "status" | "reminderChannel">>,
-): Promise<Appointment> {
-  const supabase = await db();
-  const row = unwrap(
-    await supabase
-      .from("appointments")
-      .insert({
-        client_id: data.clientId,
-        date: data.date,
-        duration_min: data.durationMin ?? 45,
-        note: data.note ?? null,
-        status: data.status ?? "scheduled",
-        reminder_enabled: data.reminderEnabled ?? true,
-        reminder_channel: "sms",
-        reminder_sent_at: data.reminderSentAt ?? null,
-      })
-      .select("*")
-      .single(),
-  );
-  return toAppointment(row);
-}
-
-export async function updateAppointment(
-  id: string,
-  patch: Partial<Appointment>,
-): Promise<Appointment | undefined> {
-  const supabase = await resilientDb();
-  const row: Record<string, unknown> = {};
-  if (patch.clientId !== undefined) row.client_id = patch.clientId;
-  if (patch.date !== undefined) row.date = patch.date;
-  if (patch.durationMin !== undefined) row.duration_min = patch.durationMin;
-  if (patch.note !== undefined) row.note = patch.note;
-  if (patch.status !== undefined) row.status = patch.status;
-  if (patch.reminderEnabled !== undefined) row.reminder_enabled = patch.reminderEnabled;
-  if (patch.reminderSentAt !== undefined) row.reminder_sent_at = patch.reminderSentAt;
-  const { data, error } = await supabase
-    .from("appointments")
-    .update(row)
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toAppointment(data) : undefined;
-}
-
-export async function markReminderSent(id: string, when: string): Promise<void> {
-  const supabase = await resilientDb();
-  const { error } = await supabase
-    .from("appointments")
-    .update({ reminder_sent_at: when })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-}
-
-// --- Uploaded PDF templates ------------------------------------------------
-export async function listPdfTemplates(): Promise<PdfTemplateFile[]> {
-  const supabase = await db();
-  const rows = unwrap(await supabase.from("pdf_templates").select("*"));
-  return (rows as Row[]).map(toPdfTemplate);
-}
-
-export async function getPdfTemplate(id: string): Promise<PdfTemplateFile | undefined> {
-  const supabase = await db();
-  const { data, error } = await supabase
-    .from("pdf_templates")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toPdfTemplate(data) : undefined;
-}
-
-export async function createPdfTemplate(data: {
-  name: string;
-  storagePath: string;
-}): Promise<PdfTemplateFile> {
-  const nid = await currentNid();
-  const supabase = await db();
-  const row = unwrap(
-    await supabase
-      .from("pdf_templates")
-      .insert({ nutritionist_id: nid, name: data.name, storage_path: data.storagePath })
-      .select("*")
-      .single(),
-  );
-  return toPdfTemplate(row);
-}
-
-export async function deletePdfTemplate(id: string): Promise<void> {
-  const supabase = await db();
-  const { error } = await supabase.from("pdf_templates").delete().eq("id", id);
-  if (error) throw new Error(error.message);
-}
-
-// --- SMS outbox ------------------------------------------------------------
-export async function addSentMessage(msg: SentMessage): Promise<void> {
-  const supabase = await resilientDb();
-  const { error } = await supabase.from("sent_messages").insert({
-    appointment_id: msg.appointmentId,
-    client_id: msg.clientId,
-    to: msg.to,
-    channel: "sms",
-    body: msg.body,
-    status: msg.status,
-    provider: msg.provider,
+export async function updateAppointment(id: string, patch: Partial<Omit<Appointment, "id">>) {
+  const row = columns(patch, {
+    clientId: "client_id",
+    date: "date",
+    durationMin: "duration_min",
+    note: "note",
+    status: "status",
+    reminderEnabled: "reminder_enabled",
+    reminderSentAt: "reminder_sent_at",
   });
-  if (error) throw new Error(error.message);
+  const data = maybe(await (await db()).from("appointments").update(row).eq("id", id).select("*").maybeSingle());
+  return data ? toAppointment(data) : undefined;
+}
+
+export async function deleteAppointment(id: string): Promise<void> {
+  check(await (await db()).from("appointments").delete().eq("id", id));
 }
 
 export async function listSentMessages(): Promise<SentMessage[]> {
-  const supabase = await db();
   const rows = unwrap(
-    await supabase.from("sent_messages").select("*").order("created_at", { ascending: false }),
+    await (await db()).from("sent_messages").select("*").order("created_at", { ascending: false }).limit(100),
   );
   return (rows as Row[]).map(toSentMessage);
 }
 
-// --- Dashboard aggregates --------------------------------------------------
-export async function getDashboardStats() {
-  const [clients, appts] = await Promise.all([listClients(), listAppointments()]);
-  const supabase = await db();
-  const consultations = (
-    unwrap(
-      await supabase.from("consultations").select("*").order("date", { ascending: false }),
-    ) as Row[]
-  ).map(toConsultation);
-  const plans = (unwrap(await supabase.from("meal_plans").select("*")) as Row[]).map(toPlan);
-
-  const clientById = new Map(clients.map((c) => [c.id, c]));
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const inThisMonth = (iso: string) => new Date(iso) >= monthStart;
-
-  const consultationsThisMonth = consultations.filter((c) => inThisMonth(c.date)).length;
-  const newClientsThisMonth = clients.filter((c) => inThisMonth(c.createdAt)).length;
-
-  const upcoming = appts
-    .filter((a) => a.status === "scheduled" && new Date(a.date) >= now)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
+function reminderStore(client: () => Promise<SupabaseClient>): ReminderStore {
   return {
-    activeClients: clients.length,
-    totalConsultations: consultations.length,
-    consultationsThisMonth,
-    newClientsThisMonth,
-    plansGenerated: plans.length,
-    upcomingCount: upcoming.length,
-    recentConsultationList: consultations.slice(0, 6).map((c) => ({
-      consultation: c,
-      client: clientById.get(c.clientId),
-      bmi: computeBmi(c.measurements),
-    })),
-    upcomingList: upcoming.slice(0, 5).map((a) => ({
-      appointment: a,
-      client: clientById.get(a.clientId),
-    })),
+    async listAppointments() {
+      // Only rows the reminder engine can act on.
+      const rows = unwrap(
+        await (await client())
+          .from("appointments")
+          .select("*")
+          .eq("status", "scheduled")
+          .eq("reminder_enabled", true)
+          .is("reminder_sent_at", null)
+          .gte("date", new Date().toISOString()),
+      );
+      return (rows as Row[]).map(toAppointment);
+    },
+    async getClient(id) {
+      const row = maybe(await (await client()).from("clients").select("*").eq("id", id).maybeSingle());
+      return row ? toClient(row) : undefined;
+    },
+    async getProfile(id) {
+      const row = maybe(await (await client()).from("profiles").select("*").eq("id", id).maybeSingle());
+      return row ? toProfile(row) : undefined;
+    },
+    async markReminderSent(id, when) {
+      check(await (await client()).from("appointments").update({ reminder_sent_at: when }).eq("id", id));
+    },
+    async addSentMessage(msg) {
+      check(
+        await (await client()).from("sent_messages").insert({
+          appointment_id: msg.appointmentId,
+          client_id: msg.clientId,
+          to: msg.to,
+          channel: "sms",
+          body: msg.body,
+          status: msg.status,
+          provider: msg.provider,
+        }),
+      );
+    },
   };
+}
+
+export function tenantReminderStore(): ReminderStore {
+  const store = reminderStore(db);
+  // Interactive "send now" may target any of the tenant's appointments, not
+  // only pending ones — so list everything RLS lets the user see.
+  return { ...store, listAppointments };
+}
+
+export function cronReminderStore(): ReminderStore | null {
+  const admin = createSupabaseAdminClient();
+  return admin ? reminderStore(async () => admin) : null;
+}
+
+// --- Uploaded PDF templates & files ----------------------------------------
+export async function listPdfTemplates(): Promise<PdfTemplateFile[]> {
+  const rows = unwrap(await (await db()).from("pdf_templates").select("*").order("created_at"));
+  return (rows as Row[]).map(toPdfTemplate);
+}
+
+export async function getPdfTemplate(id: string) {
+  const row = maybe(await (await db()).from("pdf_templates").select("*").eq("id", id).maybeSingle());
+  return row ? toPdfTemplate(row) : undefined;
+}
+
+export async function createPdfTemplate(data: { name: string; storagePath: string }) {
+  const supabase = await db();
+  const row = { nutritionist_id: await currentNid(supabase), name: data.name, storage_path: data.storagePath };
+  return toPdfTemplate(unwrap(await supabase.from("pdf_templates").insert(row).select("*").single()));
+}
+
+export async function deletePdfTemplate(id: string): Promise<void> {
+  const supabase = await db();
+  const tpl = await getPdfTemplate(id);
+  if (!tpl) return;
+  check(await supabase.from("pdf_templates").delete().eq("id", id));
+  check(await supabase.from("meal_plans").update({ pdf_template_id: "classic" }).eq("pdf_template_id", id));
+  await deleteFile(tpl.storagePath);
+}
+
+export async function putFile(kind: FileKind, bytes: Uint8Array, contentType: string, ext: string) {
+  const supabase = await db();
+  const key = `${await currentNid(supabase)}/${kind}-${newId("file")}.${ext}`;
+  check(await supabase.storage.from(FILES_BUCKET).upload(key, bytes, { contentType, upsert: false }));
+  return key;
+}
+
+export async function getFile(key: string) {
+  const supabase = await db();
+  const nid = await currentNid(supabase);
+  if (!key.startsWith(`${nid}/`)) return undefined;
+  const { data, error } = await supabase.storage.from(FILES_BUCKET).download(key);
+  if (error || !data) return undefined;
+  return { bytes: new Uint8Array(await data.arrayBuffer()), contentType: data.type || "application/octet-stream" };
+}
+
+export async function deleteFile(key: string): Promise<void> {
+  if (key.startsWith("/")) return; // legacy public/ path — nothing stored
+  const supabase = await db();
+  await supabase.storage.from(FILES_BUCKET).remove([key]);
 }

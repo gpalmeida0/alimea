@@ -1,156 +1,164 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Calculator, ChevronDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input, Label } from "@/components/ui/input";
-import {
-  ACTIVITY_LEVELS,
-  bmr,
-  bmi,
-  bmiClass,
-  macros,
-  targetKcal,
-  tdee,
-  type ActivityLevel,
-  type BmrFormula,
-  type Goal,
-  type Sex,
-} from "@/lib/nutrition/calc";
+import { Field, NumberInput, Select } from "@/components/ui/input";
+import { bmi, bmiClass, macros, targetKcal, type Goal } from "@/lib/nutrition/calc";
+import { FFM_FORMULAS, GEB_FORMULAS, PAL_OPTIONS, DEFAULT_PAL, geb, get, suggestGebFormula } from "@/lib/nutrition/energy";
+import { DEFAULT_MACRO_CONFIG, type MacroConfig, type Sex } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type { Totals } from "@/lib/nutrition/items";
 
-interface Props {
+/**
+ * Quick energy/macro calculator for plans that are not attached to a
+ * consultation (consultations have the full Energy and Macros tabs).
+ */
+export function EnergyCalculator({
+  weightKg: initialWeight,
+  heightCm: initialHeight,
+  age: initialAge,
+  sex: initialSex,
+  onResult,
+}: {
   weightKg?: number;
   heightCm?: number;
-  initialAge?: number;
-  onResult?: (r: { kcal: number; protein: number; carbs: number; fat: number } | undefined) => void;
-}
-
-export function EnergyCalculator({ weightKg, heightCm, initialAge, onResult }: Props) {
+  age?: number;
+  sex?: Sex;
+  onResult: (r: Totals | undefined) => void;
+}) {
   const t = useTranslations("calc");
+  const tn = useTranslations("nutrition");
   const [open, setOpen] = useState(false);
-  const [sex, setSex] = useState<Sex>("female");
-  const [age, setAge] = useState<number | undefined>(initialAge);
-  const [activity, setActivity] = useState<ActivityLevel>("light");
+  const [sex, setSex] = useState<Sex>(initialSex ?? "female");
+  const [age, setAge] = useState(initialAge);
+  const [weight, setWeight] = useState(initialWeight);
+  const [height, setHeight] = useState(initialHeight);
+  const [formula, setFormula] = useState(() => suggestGebFormula({ sex: initialSex, ageYears: initialAge }) ?? "mifflin_st_jeor");
+  const [pal, setPal] = useState(DEFAULT_PAL);
   const [goal, setGoal] = useState<Goal>("maintain");
-  const [formula, setFormula] = useState<BmrFormula>("mifflin");
-  const [p, setP] = useState(30);
-  const [c, setC] = useState(40);
-  const [f, setF] = useState(30);
+  const [split, setSplit] = useState<MacroConfig>(DEFAULT_MACRO_CONFIG);
 
-  const bmrVal =
-    weightKg && heightCm && age
-      ? bmr({ sex, weightKg, heightCm, ageYears: age }, formula)
-      : undefined;
-  const tdeeVal = bmrVal ? tdee(bmrVal, activity) : undefined;
-  const target = tdeeVal ? targetKcal(tdeeVal, goal) : undefined;
-  const m = target ? macros(target, { proteinPct: p, carbsPct: c, fatPct: f }, weightKg) : undefined;
-  const bmiVal = bmi(weightKg, heightCm);
-  const pctSum = p + c + f;
+  const input = { sex, weightKg: weight, heightCm: height, ageYears: age };
+  const gebValue = geb(formula, input);
+  const getValue = get(gebValue, pal);
+  const target = getValue ? targetKcal(getValue, goal) : undefined;
+  const m = target ? macros(target, split, weight) : undefined;
+  const bmiVal = bmi(weight, height);
+  const pctSum = split.proteinPct + split.carbsPct + split.fatPct;
 
-  // Report the computed target up to the plan editor (for the nutrition summary).
-  useEffect(() => {
-    onResult?.(
-      target && m
-        ? { kcal: target, protein: m.protein.grams, carbs: m.carbs.grams, fat: m.fat.grams }
-        : undefined,
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, m?.protein.grams, m?.carbs.grams, m?.fat.grams]);
+  const result = useMemo<Totals | undefined>(
+    () => (target && m ? { kcal: target, protein: m.protein.grams, carbs: m.carbs.grams, fat: m.fat.grams } : undefined),
+    [target, m?.protein.grams, m?.carbs.grams, m?.fat.grams], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  useEffect(() => onResult(open ? result : undefined), [result, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Card>
       <CardContent className="pt-5">
         <button
+          type="button"
           onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
           className="flex w-full items-center justify-between text-sm font-medium"
         >
           <span className="flex items-center gap-2">
             <Calculator className="size-4 text-brand" /> {t("title")}
           </span>
-          <ChevronDown className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
         </button>
 
         {open && (
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <Field label={t("sex")}>
-                <select value={sex} onChange={(e) => setSex(e.target.value as Sex)} className={selectCls}>
+                <Select value={sex} onChange={(e) => setSex(e.target.value as Sex)} className="h-8">
                   <option value="female">{t("female")}</option>
                   <option value="male">{t("male")}</option>
-                </select>
+                </Select>
               </Field>
               <Field label={t("age")}>
-                <Input
-                  type="number"
-                  value={age ?? ""}
-                  onChange={(e) => setAge(e.target.value ? Number(e.target.value) : undefined)}
-                  className="h-8"
-                />
+                <NumberInput value={age} onValueChange={setAge} className="h-8" />
               </Field>
+              <Field label={tn("weightKg")}>
+                <NumberInput value={weight} onValueChange={setWeight} className="h-8" />
+              </Field>
+              <Field label={tn("heightCm")}>
+                <NumberInput value={height} onValueChange={setHeight} className="h-8" />
+              </Field>
+            </div>
+            <Field label={t("formula")}>
+              <Select value={formula} onChange={(e) => setFormula(e.target.value)} className="h-8">
+                {GEB_FORMULAS.filter((f) => !FFM_FORMULAS.has(f.key)).map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
               <Field label={t("activity")}>
-                <select value={activity} onChange={(e) => setActivity(e.target.value as ActivityLevel)} className={selectCls}>
-                  {(Object.keys(ACTIVITY_LEVELS) as ActivityLevel[]).map((a) => (
-                    <option key={a} value={a}>
-                      {t(`activities.${a}`)}
+                <Select value={pal} onChange={(e) => setPal(Number(e.target.value))} className="h-8">
+                  {PAL_OPTIONS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.value} — {tn(`palShort.${p.labelKey.split(".")[1]}`)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
               <Field label={t("goal")}>
-                <select value={goal} onChange={(e) => setGoal(e.target.value as Goal)} className={selectCls}>
+                <Select value={goal} onChange={(e) => setGoal(e.target.value as Goal)} className="h-8">
                   <option value="loss">{t("goals.loss")}</option>
                   <option value="maintain">{t("goals.maintain")}</option>
                   <option value="gain">{t("goals.gain")}</option>
-                </select>
+                </Select>
               </Field>
             </div>
 
-            <Field label={t("formula")}>
-              <select value={formula} onChange={(e) => setFormula(e.target.value as BmrFormula)} className={selectCls}>
-                <option value="mifflin">Mifflin-St Jeor</option>
-                <option value="harris">Harris-Benedict</option>
-              </select>
-            </Field>
-
-            {/* Results */}
             <div className="grid grid-cols-3 gap-2 text-center">
-              <Result label={t("bmr")} value={bmrVal} unit="kcal" />
-              <Result label={t("tdee")} value={tdeeVal} unit="kcal" />
-              <Result label={t("target")} value={target} unit="kcal" highlight />
+              <Result label={t("bmr")} value={gebValue} />
+              <Result label={t("tdee")} value={getValue} />
+              <Result label={t("target")} value={target} highlight />
             </div>
-
             {bmiVal != null && (
               <p className="text-center text-xs text-muted-foreground">
-{t("bmi")} {bmiVal} · {t(`bmiClass.${bmiClass(bmiVal)}`)}
+                {t("bmi")} {bmiVal} · {t(`bmiClass.${bmiClass(bmiVal)}`)}
               </p>
             )}
 
-            {/* Macro split */}
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <Label>{t("macros")}</Label>
-                <span className={`text-xs ${pctSum === 100 ? "text-muted-foreground" : "text-destructive"}`}>
+                <span className="text-xs font-medium text-muted-foreground">{t("macros")}</span>
+                <span className={cn("text-xs lining-nums tabular-nums", pctSum === 100 ? "text-muted-foreground" : "text-destructive")}>
                   {pctSum}%
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <MacroInput label={t("protein")} pct={p} setPct={setP} />
-                <MacroInput label={t("carbs")} pct={c} setPct={setC} />
-                <MacroInput label={t("fat")} pct={f} setPct={setF} />
+                {(
+                  [
+                    ["proteinPct", t("protein"), m?.protein],
+                    ["carbsPct", t("carbs"), m?.carbs],
+                    ["fatPct", t("fat"), m?.fat],
+                  ] as const
+                ).map(([key, label, res]) => (
+                  <div key={key} className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground">{label} %</p>
+                    <NumberInput
+                      value={split[key]}
+                      onValueChange={(v) => setSplit((s) => ({ ...s, [key]: v ?? 0 }))}
+                      className="h-8 text-center"
+                    />
+                    {res && (
+                      <p className="text-center text-[11px] lining-nums tabular-nums">
+                        {res.grams}g{res.gPerKg != null && <span className="text-muted-foreground"> · {res.gPerKg}g/kg</span>}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
-              {m && (
-                <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
-                  <MacroResult grams={m.protein.grams} gPerKg={m.protein.gPerKg} />
-                  <MacroResult grams={m.carbs.grams} gPerKg={m.carbs.gPerKg} />
-                  <MacroResult grams={m.fat.grams} gPerKg={m.fat.gPerKg} />
-                </div>
-              )}
             </div>
-
-            {(!weightKg || !heightCm || !age) && (
-              <p className="text-xs italic text-muted-foreground">{t("needData")}</p>
-            )}
+            {(!weight || !height || !age) && <p className="text-xs italic text-muted-foreground">{t("needData")}</p>}
           </div>
         )}
       </CardContent>
@@ -158,63 +166,12 @@ export function EnergyCalculator({ weightKg, heightCm, initialAge, onResult }: P
   );
 }
 
-const selectCls = "flex h-8 w-full rounded-md border border-input bg-card px-2 text-sm";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Result({ label, value, highlight }: { label: string; value?: number; highlight?: boolean }) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[10px]">{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function Result({
-  label,
-  value,
-  unit,
-  highlight,
-}: {
-  label: string;
-  value?: number;
-  unit: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className={`rounded-md p-2 ${highlight ? "bg-brand-50" : "bg-muted/50"}`}>
+    <div className={cn("rounded-md p-2", highlight ? "bg-brand-50" : "bg-muted/60")}>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`font-serif text-lg font-semibold ${highlight ? "text-brand-600" : ""}`}>
-        {value ?? "—"}
-      </p>
-      <p className="text-[10px] text-muted-foreground">{unit}</p>
-    </div>
-  );
-}
-
-function MacroInput({ label, pct, setPct }: { label: string; pct: number; setPct: (n: number) => void }) {
-  return (
-    <div className="space-y-1">
-      <Label className="text-[10px] normal-case">{label}</Label>
-      <div className="relative">
-        <Input
-          type="number"
-          value={pct}
-          onChange={(e) => setPct(Number(e.target.value) || 0)}
-          className="h-8 pr-5 text-center"
-        />
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-          %
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function MacroResult({ grams, gPerKg }: { grams: number; gPerKg?: number }) {
-  return (
-    <div className="rounded-md bg-muted/50 p-1.5">
-      <p className="font-medium">{grams}g</p>
-      {gPerKg != null && <p className="text-[10px] text-muted-foreground">{gPerKg} g/kg</p>}
+      <p className={cn("font-serif text-lg font-semibold lining-nums tabular-nums", highlight && "text-brand-700")}>{value ?? "—"}</p>
+      <p className="text-[10px] text-muted-foreground">kcal</p>
     </div>
   );
 }

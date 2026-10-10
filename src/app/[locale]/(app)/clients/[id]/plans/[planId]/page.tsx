@@ -3,9 +3,9 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ArrowLeft } from "lucide-react";
 import {
   getClient,
-  getConsultation,
   getMealSuggestions,
   getPlan,
+  listConsultations,
   listFoods,
   listPdfTemplates,
   listRecipes,
@@ -13,45 +13,54 @@ import {
   listTemplates,
 } from "@/lib/data/repo";
 import { Link } from "@/i18n/routing";
-import { PlanEditor } from "@/components/plan-editor";
 import { ConsultationWorkspace } from "@/components/consultation-workspace";
+import { StandalonePlan } from "@/components/standalone-plan";
+import type { PlanDraft, PlanEditorContext } from "@/components/plan-editor";
+import { heightCmOf } from "@/lib/types";
 import { ageFromBirth, formatDate } from "@/lib/utils";
 
-export default async function PlanEditorPage({
-  params,
-}: {
-  params: Promise<{ locale: string; id: string; planId: string }>;
-}) {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const client = await getClient((await params).id);
+  return { title: client?.name };
+}
+
+export default async function PlanPage({ params }: { params: Promise<{ locale: string; id: string; planId: string }> }) {
   const { locale, id, planId } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("plan");
-  const tc = await getTranslations("consultation");
+  const tn = await getTranslations("nutrition");
 
-  const [plan, client, recommendations, suggestions, templates, pdfTemplates, foods, recipes] =
-    await Promise.all([
-      getPlan(planId),
-      getClient(id),
-      listRecommendations(),
-      getMealSuggestions(id),
-      listTemplates(),
-      listPdfTemplates(),
-      listFoods(),
-      listRecipes(),
-    ]);
-  if (!plan || !client) notFound();
+  const [plan, client] = await Promise.all([getPlan(planId), getClient(id)]);
+  if (!plan || !client || plan.clientId !== client.id) notFound();
 
-  const consultation = plan.consultationId
-    ? await getConsultation(plan.consultationId)
-    : undefined;
+  const [recommendations, suggestions, templates, pdfTemplates, foods, recipes, consultations] = await Promise.all([
+    listRecommendations(),
+    getMealSuggestions(id),
+    listTemplates(),
+    listPdfTemplates(),
+    listFoods({ includeArchived: true }),
+    listRecipes(),
+    listConsultations(id),
+  ]);
 
-  // Heuristic: a freshly duplicated plan shares meals with a prior plan.
-  const prefilled = Boolean(plan.consultationId) && plan.meals.length > 0;
-  const age = ageFromBirth(client.birthDate);
+  const idx = plan.consultationId ? consultations.findIndex((c) => c.id === plan.consultationId) : -1;
+  const consultation = idx >= 0 ? consultations[idx] : undefined;
+  const previous = idx >= 0 ? consultations[idx + 1] : undefined;
+  const latest = consultations[0];
 
-  const planEditorProps = {
+  const draft: PlanDraft = {
+    meals: plan.meals,
+    language: plan.language,
+    pdfTemplateId: plan.pdfTemplateId ?? "classic",
+    supplementation: plan.supplementation ?? "",
+    notes: plan.notes ?? "",
+    motivationalQuote: plan.motivationalQuote ?? "",
+    nextAppointment: plan.nextAppointment ?? "",
+  };
+  const ctx: PlanEditorContext = {
     planId: plan.id,
     clientId: id,
-    clientName: client.name,
+    standalone: !consultation,
     templates: templates.map((tpl) => ({
       id: tpl.id,
       name: tpl.name,
@@ -59,63 +68,53 @@ export default async function PlanEditorPage({
       supplementation: tpl.supplementation ?? "",
       notes: tpl.notes ?? "",
     })),
-    initialMeals: plan.meals,
-    initialLanguage: plan.language,
-    initialSupplementation: plan.supplementation ?? "",
-    initialNotes: plan.notes ?? "",
-    initialQuote: plan.motivationalQuote ?? "",
-    initialNextAppointment: plan.nextAppointment ?? "",
-    initialPdfTemplateId: plan.pdfTemplateId ?? "classic",
-    pdfTemplates: pdfTemplates.map((p) => ({ id: p.id, name: p.name })),
-    clientAge: age,
-    consultation,
-    recommendations: recommendations.map((r) => ({
-      id: r.id,
-      title: r.title,
-      category: r.category,
-      content: r.content,
-    })),
+    recommendations: recommendations.map((r) => ({ id: r.id, title: r.title, category: r.category, content: r.content })),
     suggestions,
-    prefilled,
+    pdfTemplates: pdfTemplates.map((p) => ({ id: p.id, name: p.name })),
     dbFoods: foods,
     recipes,
   };
 
   return (
     <div>
-      <Link
-        href={`/clients/${id}`}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
+      <Link href={`/clients/${id}`} className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> {client.name}
       </Link>
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="font-serif text-3xl font-semibold tracking-tight">
-          {consultation ? tc("title") : t("title")}
+          {consultation ? tn("consultationN", { n: consultation.consultationNumber ?? idx + 1 }) : t("title")}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {client.name}
-          {consultation
-            ? ` · ${formatDate(consultation.date, locale)} · ${t("title")}`
-            : ` · ${t("editor")}`}
+          {client.name} · {formatDate(consultation?.date ?? plan.updatedAt, locale, { day: "numeric", month: "long", year: "numeric" })}
         </p>
       </div>
 
       {consultation ? (
         <ConsultationWorkspace
           clientId={id}
-          age={age}
           initialClient={{
+            birthDate: client.birthDate,
             sex: client.sex,
             ethnicity: client.ethnicity,
             profession: client.profession,
-            anamnesis: client.anamnesis,
+            anamnesis: client.anamnesis ?? {},
           }}
           consultation={consultation}
-          planEditorProps={planEditorProps}
+          previous={previous}
+          initialPlan={draft}
+          planCtx={ctx}
         />
       ) : (
-        <PlanEditor {...planEditorProps} />
+        <StandalonePlan
+          initialPlan={draft}
+          ctx={ctx}
+          calculator={{
+            weightKg: latest?.measurements.weightKg,
+            heightCm: heightCmOf(latest?.measurements),
+            age: ageFromBirth(client.birthDate),
+            sex: client.sex,
+          }}
+        />
       )}
     </div>
   );

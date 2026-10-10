@@ -12,10 +12,11 @@ export function LogoutButton({ className }: { className?: string }) {
   const [pending, start] = useTransition();
   return (
     <button
+      type="button"
       onClick={() => start(() => logoutAction(locale))}
       disabled={pending}
       className={cn(
-        "flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50",
+        "flex items-center gap-2 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50",
         className,
       )}
     >

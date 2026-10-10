@@ -13,7 +13,13 @@
     "recipes": "Recipes",
     "appointments": "Appointments",
     "billing": "Billing",
-    "settings": "Settings"
+    "settings": "Settings",
+    "main": "Main navigation",
+    "groups": {
+      "work": "Daily work",
+      "library": "Clinical library",
+      "admin": "Practice"
+    }
   },
   "mets": {
     "title": "Activities (METs)",
@@ -97,7 +103,11 @@
     "female": "Female",
     "male": "Male",
     "ethnicity": "Ethnicity",
-    "ethnicities": { "white": "Caucasian", "black": "Black", "other": "Other" },
+    "ethnicities": {
+      "white": "Caucasian",
+      "black": "Black",
+      "other": "Other"
+    },
     "profession": "Profession",
     "reason": "Reason for consultation",
     "previousFollowUp": "Previously followed by a nutritionist?",
@@ -180,23 +190,125 @@
     "exportPdf": "Export plan PDF",
     "save": "Save consultation",
     "noFoodsYet": "You have no foods yet. Add them under \"Foods\".",
-    "pickItem": "Pick food / recipe"
+    "pickItem": "Pick food / recipe",
+    "weightKg": "Weight (kg)",
+    "birthDate": "Date of birth",
+    "ageYears": "{age} years old",
+    "ageNeeded": "Needed for most formulas.",
+    "ageLabel": "Age",
+    "consultationDate": "Consultation date",
+    "consultationNotes": "Consultation notes",
+    "addStandardMeals": "Add the 5 usual meals",
+    "removeMeal": "Remove meal",
+    "defaultMeals": [
+      "Breakfast",
+      "Morning snack",
+      "Lunch",
+      "Afternoon snack",
+      "Dinner"
+    ],
+    "comparedWith": "compared with {date}",
+    "bmiLabel": "BMI",
+    "bmiClass": {
+      "underweight": "Underweight",
+      "normal": "Normal weight",
+      "overweight": "Overweight",
+      "obese1": "Obesity class I",
+      "obese2": "Obesity class II",
+      "obese3": "Obesity class III",
+      "unknown": "—"
+    },
+    "whr": "Waist-to-hip ratio",
+    "whrNeeds": "Needs waist, hip and sex",
+    "whrOk": "Within the WHO reference",
+    "whrRisk": "Above the WHO cardiometabolic risk cut-off",
+    "fatMassKg": "Fat mass",
+    "missingInputsList": "Missing for some formulas: {fields}.",
+    "use": "Use",
+    "useHint": "“Use” records the value in the consultation (progress charts and PDF).",
+    "currentRecorded": "Recorded in this consultation: {value}",
+    "applicable": "Applicable to this client",
+    "otherFormulas": "Other formulas",
+    "ffm": "FFM (kg)",
+    "gebKcal": "BMR (kcal/day)",
+    "getKcal": "TDEE (kcal/day)",
+    "needsFfm": "This formula needs fat-free mass: enter lean mass or % body fat.",
+    "goalShortcut": {
+      "loss": "−20%",
+      "maintain": "= TDEE",
+      "gain": "+15%"
+    },
+    "targetManual": "Target set manually.",
+    "targetFollowsGet": "Target follows the TDEE automatically.",
+    "resetToGet": "Follow TDEE",
+    "targetSummary": "Plan target: {kcal} kcal/day — used by the Macros tab and the meal-plan summary.",
+    "palShort": {
+      "sedentary": "Sedentary",
+      "light": "Light",
+      "moderate": "Moderate",
+      "active": "Very active",
+      "extreme": "Extreme"
+    },
+    "sumOk": "Distribution adds up to 100%.",
+    "resetMacros": "Reset to 15 / 55 / 30",
+    "needsWeight": "needs weight",
+    "allCategories": "All categories",
+    "noFoodsHint": "Add foods by hand or copy them from the nutrition database tab.",
+    "noMatches": "No foods match.",
+    "kcalMismatch": "Heads-up: kcal differ a lot from the macros (4/4/9 kcal per g).",
+    "addToMyFoods": "Add to my foods",
+    "inMyFoods": "Already in my foods",
+    "addedToMyFoods": "“{name}” added to my foods",
+    "recipe": "Recipe",
+    "pickerHint": "↑↓ to navigate · Enter to add · Shift+Enter to add and keep searching",
+    "goToFoods": "Go to Foods",
+    "noRecipesHint": "Recipes count per portion in meal plans.",
+    "noIngredients": "No ingredients yet.",
+    "servingsCount": "{n, plural, =1 {1 serving} other {# servings}}",
+    "ingredientsCount": "{n, plural, =1 {1 ingredient} other {# ingredients}}",
+    "deleteRecipeTitle": "Delete recipe “{name}”?"
   },
   "auth": {
     "login": "Sign in",
-    "signup": "Create account",
     "logout": "Sign out",
     "loginSubtitle": "Sign in to your nutritionist account.",
-    "signupSubtitle": "Create your nutritionist account.",
-    "name": "Name",
     "email": "Email",
     "password": "Password",
-    "noAccount": "Don't have an account?",
-    "haveAccount": "Already have an account?",
     "demoHint": "Demo: eduarda@alimea.app / alimea",
+    "inviteOnly": "Accounts are created by the Alimea team. Contact us to get access.",
+    "forgotPassword": "Forgot your password?",
+    "forgotTitle": "Reset password",
+    "forgotSubtitle": "Enter your email and we will send you a link to choose a new password.",
+    "forgotSent": "If an account exists for that email, a reset link is on its way. It can take a few minutes.",
+    "sendResetLink": "Send reset link",
+    "backToLogin": "Back to sign in",
+    "inviteTitle": "Welcome to Alimea",
+    "confirmTitle": "Confirm your email",
+    "confirmSubtitle": "Press continue to finish.",
+    "continue": "Continue",
+    "newPasswordTitle": "Choose a password",
+    "newPasswordSubtitle": "You will use it to sign in from now on.",
+    "newPassword": "New password",
+    "confirmPassword": "Repeat new password",
+    "savePassword": "Save password",
+    "passwordHint": "At least {min} characters.",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "mfaTitle": "Two-step verification",
+    "mfaSubtitle": "Enter the 6-digit code from your authenticator app.",
+    "mfaCode": "6-digit code",
+    "mfaLost": "Lost your phone? Contact the Alimea team to restore access.",
+    "verify": "Verify",
     "errors": {
       "invalid": "Invalid credentials.",
-      "exists": "An account with this email already exists."
+      "locked": "Too many attempts. Wait a few minutes and try again.",
+      "link": "This link is invalid or has expired. Ask for a new one.",
+      "weak": "That password is too short or too easy to guess.",
+      "same": "The new password must be different from the current one.",
+      "mismatch": "The two passwords do not match.",
+      "code": "That code is not correct. Try the next one from your app.",
+      "currentPassword": "Your current password is not correct.",
+      "failed": "Something went wrong. Please try again."
     }
   },
   "notifications": {
@@ -225,13 +337,24 @@
     "all": "All",
     "language": "Language",
     "actions": "Actions",
-    "optional": "optional"
+    "optional": "optional",
+    "close": "Close",
+    "confirm": "Confirm",
+    "deleted": "Deleted",
+    "error": "Something went wrong. Please try again.",
+    "more": "More options",
+    "menu": "Menu",
+    "name": "Name",
+    "unsaved": "Unsaved changes",
+    "saveFailed": "Could not save — retry",
+    "savedAt": "Saved at {time}",
+    "allSaved": "All changes saved"
   },
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome back, {name}",
     "subtitle": "Here is the summary of your clinical activity.",
-    "activeClients": "Active clients",
+    "activeClients": "Active clients (6 months)",
     "recentConsultations": "Recent consultations",
     "consultationsThisMonth": "Consultations this month",
     "totalConsults": "{n} total",
@@ -246,7 +369,17 @@
     "newClient": "New client",
     "newPlan": "New plan",
     "viewAll": "View all",
-    "noActivity": "No activity recorded yet."
+    "noActivity": "No activity recorded yet.",
+    "greeting": {
+      "morning": "Good morning, {name}",
+      "afternoon": "Good afternoon, {name}",
+      "evening": "Good evening, {name}"
+    },
+    "schedule": "Calendar",
+    "ofTotal": "{n} clients in total · +{newCount} this month",
+    "revenueThisMonth": "Revenue this month",
+    "pendingRevenue": "{amount} pending",
+    "plansHint": "{n} plans created"
   },
   "clients": {
     "title": "Clients",
@@ -262,7 +395,26 @@
     "searchPlaceholder": "Search clients by name or email…",
     "createTitle": "Create client",
     "notes": "Notes",
-    "goals": "Goals"
+    "goals": "Goals",
+    "createSubtitle": "Basic details — the rest is filled in during the consultation.",
+    "editTitle": "Edit client",
+    "delete": "Delete client",
+    "deleteTitle": "Delete {name}?",
+    "deleteBody": "All consultations, plans and appointments of this client are permanently deleted. Billing entries are kept.",
+    "phoneHint": "Used for SMS reminders.",
+    "noClientsHint": "Add your first client to start consultations and plans.",
+    "noMatches": "No clients match your search.",
+    "count": "{n, plural, =1 {1 client} other {# clients}}",
+    "ageShort": "{age} y",
+    "lastWeight": "Last weight",
+    "consultationsCount": "{n, plural, =0 {no consultations} =1 {1 consultation} other {# consultations}}",
+    "nextAppointment": "Next appointment",
+    "sortBy": "Sort by",
+    "sort": {
+      "name": "Name (A–Z)",
+      "recent": "Most recent consultation",
+      "newest": "Newest clients"
+    }
   },
   "client": {
     "overview": "Overview",
@@ -278,7 +430,20 @@
     "comparison": "Comparison",
     "noConsultations": "No consultations recorded.",
     "age": "{age} years",
-    "since": "Client since {date}"
+    "since": "Client since {date}",
+    "startTitle": "New consultation",
+    "startHint": "Opens the anamnesis, anthropometry and meal plan in one place.",
+    "startHintDuplicate": "Duplicating pre-fills measurements and clones the last plan — adjust only what changed.",
+    "progressEmpty": "Progress charts appear after two consultations",
+    "progressEmptyHint": "Record weight and measurements in each consultation.",
+    "noConsultationsHint": "Start the first consultation above.",
+    "plan": "Plan",
+    "nextAppointments": "Appointments",
+    "schedule": "Schedule",
+    "noAppointments": "No upcoming appointments.",
+    "otherPlans": "Other plans",
+    "deleteConsultation": "Delete consultation",
+    "deleteConsultationBody": "The consultation and its meal plan are permanently deleted. An unpaid automatic billing entry is removed too."
   },
   "billing": {
     "title": "Billing",
@@ -310,13 +475,25 @@
     "auto": "Automatic",
     "manual": "Manual",
     "allStatuses": "All statuses",
-    "fromConsultation": "From consultation"
+    "fromConsultation": "From consultation",
+    "totalIn": "Total · {month}",
+    "allMonths": "All months",
+    "month": "Month",
+    "otherClient": "Other (type the name)",
+    "clientName": "Client name",
+    "customType": "Other type…",
+    "noEntriesHint": "Entries are created automatically for each consultation, or add one by hand.",
+    "deleteTitle": "Delete this entry?",
+    "typesHint": "Each new consultation is billed with its type's price.",
+    "deleteTypeTitle": "Delete “{name}”?",
+    "deleteTypeBody": "Existing billing entries keep their name and amount.",
+    "fileName": "billing"
   },
   "consultation": {
     "title": "Consultation",
     "date": "Consultation date",
     "weight": "Weight (kg)",
-    "height": "Height (m)",
+    "height": "Height (cm)",
     "bmi": "BMI",
     "bodyFat": "% body fat",
     "muscleMass": "Muscle mass (kg)",
@@ -340,7 +517,12 @@
     "bmiShort": "BMI",
     "fatShort": "BF",
     "notesFromConsult": "Consultation notes",
-    "prefilledNotice": "Pre-filled from the previous consultation. Adjust only what's needed."
+    "prefilledNotice": "Pre-filled from the previous consultation. Adjust only what's needed.",
+    "noMeasurements": "No measurements",
+    "abdominalPerimeter": "Abdominal",
+    "chest": "Chest",
+    "abdominalSkinfold": "Abdominal",
+    "peitoral": "Chest (skinfold)"
   },
   "plan": {
     "title": "Meal plan",
@@ -367,7 +549,7 @@
     "notes": "Notes",
     "nextAppointment": "Next appointment date",
     "motivationalQuote": "Motivational quote",
-    "generate": "Generate plan",
+    "generate": "Download PDF",
     "generating": "Generating PDF…",
     "generatePdf": "Generate PDF",
     "preview": "Preview",
@@ -380,7 +562,24 @@
     "applySuggestion": "Apply",
     "addMealPlaceholder": "e.g. Breakfast, Lunch, Snack…",
     "optionPlaceholder": "e.g. 1 wholegrain bread roll + 1 slice of light cheese",
-    "emptyMeals": "No meals added yet. Add the first one or duplicate a previous plan."
+    "emptyMeals": "No meals added yet. Add the first one or duplicate a previous plan.",
+    "standardDay": "Add a standard day (5 meals)",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeMealTitle": "Remove “{name}”?",
+    "quantity": "quantity",
+    "portion": "portion",
+    "fromHistory": "Reuse from this client's history…",
+    "noItemsHint": "Add foods to the options to compare with the target.",
+    "nextAppointmentHint": "Printed on the back cover, e.g. “20 May at 2pm”.",
+    "deletePlan": "Delete plan",
+    "deletePlanBody": "This plan is permanently deleted.",
+    "templateApplied": "Template “{name}” applied",
+    "templateAppend": "Add to current meals",
+    "templateReplace": "Replace current meals",
+    "saveAsTemplateHint": "Reuse this plan's meals, supplementation and notes for other clients.",
+    "templateName": "Template name",
+    "templateSaved": "Template saved"
   },
   "recommendations": {
     "title": "Reusable recommendations",
@@ -396,7 +595,13 @@
       "general": "General"
     },
     "content": "Content",
-    "noItems": "No recommendations yet. Create reusable blocks to save time."
+    "noItems": "No recommendations yet. Create reusable blocks to save time.",
+    "edit": "Edit recommendation",
+    "deleteTitle": "Delete “{title}”?",
+    "hint": "Reusable text blocks you tick into any plan, in both languages.",
+    "missingTranslation": "No English version yet",
+    "translateFromPt": "Translate from Portuguese",
+    "usageHint": "In the plan editor, ticking a recommendation inserts its text in the plan's language."
   },
   "templates": {
     "title": "Plan templates",
@@ -404,7 +609,12 @@
     "new": "New template",
     "apply": "Apply template",
     "noItems": "No saved templates.",
-    "createHint": "Tip: you can also save any plan as a template from the editor."
+    "createHint": "Tip: you can also save any plan as a template from the editor.",
+    "edit": "Edit template",
+    "name": "Template name",
+    "deleteTitle": "Delete template “{name}”?",
+    "emptyHint": "Create one here, or save any plan as a template from the plan editor.",
+    "optionsCount": "{n} options"
   },
   "appointments": {
     "title": "Appointments",
@@ -426,7 +636,20 @@
       "cancelled": "Cancelled"
     },
     "markCompleted": "Mark as completed",
-    "markCancelled": "Cancel appointment"
+    "markCancelled": "Cancel appointment",
+    "editTitle": "Edit appointment",
+    "created": "Appointment scheduled",
+    "inPast": "This date is in the past.",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "viewMonth": "Month",
+    "viewAgenda": "Agenda",
+    "newOn": "New appointment on {date}",
+    "openClient": "Open client",
+    "startConsultation": "Start consultation",
+    "reopen": "Reopen",
+    "deleteTitle": "Delete this appointment?",
+    "deleteBody": "The appointment and its reminder history are removed."
   },
   "reminders": {
     "title": "Automatic reminders",
@@ -448,7 +671,18 @@
     "outbox": "Sent messages",
     "noMessages": "No messages sent yet.",
     "messagePreview": "Message preview",
-    "secretary": "Replaces secretary work: clients are reminded automatically."
+    "secretary": "Replaces secretary work: clients are reminded automatically.",
+    "cronHint": "Runs automatically every morning. Use the button to send pending reminders now.",
+    "sentShort": "Sent",
+    "dueShort": "Pending",
+    "resend": "Resend reminder",
+    "sentNow": "Reminder sent",
+    "failed": "Reminder failed",
+    "status": {
+      "sent": "Sent",
+      "simulated": "Preview",
+      "failed": "Failed"
+    }
   },
   "calc": {
     "title": "Energy needs",
@@ -497,7 +731,11 @@
     "improve": "Improve text",
     "suggest": "Suggest recommendation",
     "disclaimer": "AI supports administrative tasks. It never creates plans or makes clinical decisions.",
-    "hint": "The nutritionist always keeps full clinical control."
+    "hint": "The nutritionist always keeps full clinical control.",
+    "translateTo": "Translate → {lang}",
+    "translated": "Plan translated",
+    "notConfigured": "The AI assistant is not configured (OPENAI_API_KEY).",
+    "failed": "The AI assistant failed. Please try again."
   },
   "settings": {
     "title": "Settings",
@@ -520,7 +758,72 @@
     "pdfTemplatesHint": "Upload your own PDF templates. You can choose which to use per plan.",
     "pdfTemplateName": "Template name",
     "pdfTemplateNamePlaceholder": "e.g. Premium Plan 2025",
-    "uploadTemplate": "Upload template"
+    "uploadTemplate": "Upload template",
+    "subtitle": "Your professional details and how your plans look.",
+    "email": "Email",
+    "uploadLogo": "Upload logo",
+    "removeLogo": "Remove",
+    "interfaceLanguageHint": "Also used for SMS reminders.",
+    "templateUploaded": "Template uploaded",
+    "deleteTemplateTitle": "Delete “{name}”?",
+    "deleteTemplateBody": "Plans using it fall back to the classic design.",
+    "errors": {
+      "logoType": "The logo must be a PNG or JPG image.",
+      "logoSize": "The logo must be smaller than 2 MB.",
+      "pdfType": "That file is not a valid PDF.",
+      "pdfSize": "The PDF must be smaller than 10 MB.",
+      "missing": "Choose a PDF file."
+    },
+    "integrations": "Integrations",
+    "integrationsHint": "Configured through environment variables on the server.",
+    "active": "Active",
+    "inactive": "Not configured",
+    "integration": {
+      "database": {
+        "title": "Database (Supabase)",
+        "on": "Data is stored securely in Supabase.",
+        "off": "Demo mode — data is kept in memory and lost on restart."
+      },
+      "sms": {
+        "title": "SMS reminders (Twilio)",
+        "on": "Reminders are delivered by SMS.",
+        "off": "Preview mode — messages appear in the outbox only."
+      },
+      "ai": {
+        "title": "AI assistant (OpenAI)",
+        "on": "Translate and improve text with AI.",
+        "off": "Set OPENAI_API_KEY to enable translation and text improvement."
+      }
+    },
+    "security": {
+      "title": "Account & security",
+      "subtitle": "How you sign in to Alimea.",
+      "loginEmail": "Sign-in email",
+      "loginEmailHint": "Separate from the contact email printed on your plans.",
+      "changeEmail": "Change email",
+      "emailConfirm": "Check your inbox to confirm the new address.",
+      "emailErrors": {
+        "invalid": "That is not a valid email address.",
+        "exists": "Another account already uses that email.",
+        "failed": "Could not change the email. Please try again."
+      },
+      "currentPassword": "Current password",
+      "changePassword": "Change password",
+      "passwordChanged": "Password changed",
+      "mfaTitle": "Two-step verification",
+      "mfaHint": "Ask for a code from an authenticator app (Google Authenticator, Authy, 1Password…) every time you sign in.",
+      "mfaUnsupported": "Not available in demo mode.",
+      "mfaOn": "On",
+      "mfaOff": "Off",
+      "mfaEnable": "Turn on",
+      "mfaDisable": "Turn off",
+      "mfaScan": "Scan the QR code with your authenticator app, or type the key below, then enter the 6-digit code it shows.",
+      "mfaQrAlt": "QR code for your authenticator app",
+      "mfaEnabled": "Two-step verification is on",
+      "mfaDisabled": "Two-step verification is off",
+      "mfaDisableTitle": "Turn off two-step verification?",
+      "mfaDisableBody": "Your account will be protected by your password only."
+    }
   },
   "pdf": {
     "planTitle": "Meal Plan",
@@ -532,5 +835,28 @@
     "nextConsultation": "Next appointment date:",
     "nutritionist": "Nutritionist",
     "credential": "Professional Licence: {n}"
+  },
+  "palette": {
+    "placeholder": "Search clients, pages…",
+    "actions": "Actions",
+    "pages": "Pages"
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "body": "An unexpected error occurred. Your saved data is safe — try again.",
+    "retry": "Try again",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "The page you are looking for doesn't exist or was moved.",
+    "backHome": "Back to dashboard"
+  },
+  "plans": {
+    "title": "Plans",
+    "subtitle": "Every meal plan, most recently edited first.",
+    "empty": "No plans yet",
+    "emptyHint": "Plans are created when you start a consultation.",
+    "updated": "Edited {date}",
+    "fromConsultation": "From consultation",
+    "standalone": "Standalone plan",
+    "noMeals": "No meals yet"
   }
 }

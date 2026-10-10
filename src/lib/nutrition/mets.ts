@@ -1,4 +1,5 @@
 import data from "./mets.json";
+import { normalizeSearch as normalize } from "@/lib/utils";
 
 export interface Met {
   met: number;
@@ -13,9 +14,6 @@ export function metCategories(): string[] {
   return [...new Set(METS.map((m) => m.category))].sort((a, b) => a.localeCompare(b));
 }
 
-function normalize(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-}
 
 export function searchMets(query: string, category?: string, limit = 100): Met[] {
   const q = normalize(query.trim());

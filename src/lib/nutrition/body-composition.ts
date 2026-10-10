@@ -318,7 +318,8 @@ export function bodyFatPercent(
 function leeWeight(i: BodyCompInput): number | undefined {
   if (!pos(i.weightKg, i.heightCm) || !num(i.ageYears)) return undefined;
   const ht = i.heightCm! / 100;
-  const race = i.ethnicity === "black" ? 1.1 : 0; // African-American adjustment
+  // Lee 2000, model 2: race = +1.4 for African-American (model 1 uses +1.1).
+  const race = i.ethnicity === "black" ? 1.4 : 0;
   return r1(0.244 * i.weightKg! + 7.8 * ht + 6.6 * sexNum(i.sex) - 0.098 * i.ageYears! + race - 3.3);
 }
 

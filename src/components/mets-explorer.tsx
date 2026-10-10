@@ -3,15 +3,15 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Input, NumberInput, Select } from "@/components/ui/input";
 import { METS, metCategories, metKcal, searchMets } from "@/lib/nutrition/mets";
 
 export function MetsExplorer() {
   const t = useTranslations("mets");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
-  const [weight, setWeight] = useState(70);
-  const [minutes, setMinutes] = useState(30);
+  const [weight, setWeight] = useState<number | undefined>(70);
+  const [minutes, setMinutes] = useState<number | undefined>(30);
   const categories = useMemo(() => metCategories(), []);
   const results = useMemo(() => searchMets(q, category || undefined, 300), [q, category]);
 
@@ -27,36 +27,22 @@ export function MetsExplorer() {
             className="pl-9"
           />
         </div>
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="h-9 rounded-md border border-input bg-card px-3 text-sm sm:w-52"
-        >
+        <Select value={category} onChange={(e) => setCategory(e.target.value)} className="sm:w-52" aria-label={t("allCategories")}>
           <option value="">{t("allCategories")}</option>
           {categories.map((g) => (
             <option key={g} value={g}>
               {g}
             </option>
           ))}
-        </select>
+        </Select>
         <div className="flex items-end gap-2">
           <label className="text-xs text-muted-foreground">
             {t("weight")}
-            <Input
-              type="number"
-              value={weight}
-              onChange={(e) => setWeight(Number(e.target.value) || 0)}
-              className="mt-1 h-9 w-20"
-            />
+            <NumberInput value={weight} onValueChange={setWeight} min={0} className="mt-1 w-20" />
           </label>
           <label className="text-xs text-muted-foreground">
             {t("minutes")}
-            <Input
-              type="number"
-              value={minutes}
-              onChange={(e) => setMinutes(Number(e.target.value) || 0)}
-              className="mt-1 h-9 w-20"
-            />
+            <NumberInput value={minutes} onValueChange={setMinutes} min={0} className="mt-1 w-20" />
           </label>
         </div>
       </div>
@@ -68,7 +54,7 @@ export function MetsExplorer() {
       <div className="card-surface overflow-x-auto">
         <table className="w-full min-w-[560px] text-sm">
           <thead>
-            <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
               <th className="px-3 py-2 font-medium">{t("activity")}</th>
               <th className="px-3 py-2 text-right font-medium">MET</th>
               <th className="px-3 py-2 text-right font-medium">{t("estimate")}</th>
@@ -83,7 +69,7 @@ export function MetsExplorer() {
                 </td>
                 <td className="px-3 py-2 text-right font-medium">{m.met}</td>
                 <td className="px-3 py-2 text-right text-brand-600">
-                  {metKcal(m.met, weight, minutes)} kcal
+                  {metKcal(m.met, weight ?? 0, minutes ?? 0)} kcal
                 </td>
               </tr>
             ))}

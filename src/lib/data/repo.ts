@@ -1,133 +1,163 @@
-import type { Meal } from "@/lib/types";
+import { computeBmi, type Client, type Meal } from "@/lib/types";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
+import { monthStartISO, newId, onOrAfter } from "@/lib/utils";
+import type { Repository } from "./repo-types";
 import * as memory from "./repo-memory";
 import * as supabase from "./repo-supabase";
 
 // ---------------------------------------------------------------------------
-// Repository facade.
+// Repository facade — the single data boundary of the app.
 //
-// Alimea has two interchangeable data backends with an identical async API:
-//   • repo-memory.ts   — zero-setup in-memory store (default)
-//   • repo-supabase.ts — the real Supabase/Postgres database
+//   • repo-memory.ts   — zero-setup in-memory store (default, demo/local)
+//   • repo-supabase.ts — Supabase/Postgres with RLS (production)
 //
-// When the Supabase env vars are present we use the real database; otherwise
-// we fall back to the in-memory store. Every call site imports from here, so
-// switching backends is transparent.
+// Both modules are checked against the Repository contract below, so they
+// can never drift apart. Supabase is used whenever its env vars are present.
 // ---------------------------------------------------------------------------
 
-const impl = isSupabaseConfigured() ? supabase : memory;
+const memoryRepo: Repository = memory;
+const supabaseRepo: Repository = supabase;
 
-// --- Auth ------------------------------------------------------------------
-export const authenticate = impl.authenticate;
-export const emailExists = impl.emailExists;
-export const createAccount = impl.createAccount;
-export const signOut = impl.signOut;
-export const getAuthNid = impl.getAuthNid;
+export const backend: "supabase" | "memory" = isSupabaseConfigured() ? "supabase" : "memory";
+const impl: Repository = backend === "supabase" ? supabaseRepo : memoryRepo;
 
-// --- Profile ---------------------------------------------------------------
-export const getProfile = impl.getProfile;
-export const getProfileById = impl.getProfileById;
-export const updateProfile = impl.updateProfile;
-
-// --- Clients ---------------------------------------------------------------
-export const listClients = impl.listClients;
-export const getClient = impl.getClient;
-export const createClient = impl.createClient;
-export const updateClient = impl.updateClient;
-export const deleteClient = impl.deleteClient;
-
-// --- Consultations ---------------------------------------------------------
-export const listConsultations = impl.listConsultations;
-export const getConsultation = impl.getConsultation;
-export const getLastConsultation = impl.getLastConsultation;
-export const createConsultation = impl.createConsultation;
-export const updateConsultation = impl.updateConsultation;
-
-// --- Consultation types & billing ------------------------------------------
-export const listConsultationTypes = impl.listConsultationTypes;
-export const createConsultationType = impl.createConsultationType;
-export const updateConsultationType = impl.updateConsultationType;
-export const deleteConsultationType = impl.deleteConsultationType;
-export const listBillingEntries = impl.listBillingEntries;
-export const createBillingEntry = impl.createBillingEntry;
-export const updateBillingEntry = impl.updateBillingEntry;
-export const deleteBillingEntry = impl.deleteBillingEntry;
-
-// --- Plans -----------------------------------------------------------------
-export const listPlans = impl.listPlans;
-export const getPlan = impl.getPlan;
-export const createPlan = impl.createPlan;
-export const updatePlan = impl.updatePlan;
-export const duplicatePlan = impl.duplicatePlan;
-
-// --- Foods database (BOO-57) -----------------------------------------------
-export const listFoods = impl.listFoods;
-export const getFood = impl.getFood;
-export const createFood = impl.createFood;
-export const updateFood = impl.updateFood;
-export const deleteFood = impl.deleteFood;
-
-// --- Recipes (BOO-58) ------------------------------------------------------
-export const listRecipes = impl.listRecipes;
-export const getRecipe = impl.getRecipe;
-export const createRecipe = impl.createRecipe;
-export const updateRecipe = impl.updateRecipe;
-export const deleteRecipe = impl.deleteRecipe;
-
-// --- Recommendations -------------------------------------------------------
-export const listRecommendations = impl.listRecommendations;
-export const createRecommendation = impl.createRecommendation;
-
-// --- Templates -------------------------------------------------------------
-export const listTemplates = impl.listTemplates;
-export const getTemplate = impl.getTemplate;
-export const createTemplate = impl.createTemplate;
-
-// --- Appointments ----------------------------------------------------------
-export const listAppointments = impl.listAppointments;
-export const listAllAppointments = impl.listAllAppointments;
-export const getAppointment = impl.getAppointment;
-export const createAppointment = impl.createAppointment;
-export const updateAppointment = impl.updateAppointment;
-export const markReminderSent = impl.markReminderSent;
-
-// --- Uploaded PDF templates ------------------------------------------------
-export const listPdfTemplates = impl.listPdfTemplates;
-export const getPdfTemplate = impl.getPdfTemplate;
-export const createPdfTemplate = impl.createPdfTemplate;
-export const deletePdfTemplate = impl.deletePdfTemplate;
-
-// --- SMS outbox ------------------------------------------------------------
-export const addSentMessage = impl.addSentMessage;
-export const listSentMessages = impl.listSentMessages;
-
-// --- Dashboard aggregates --------------------------------------------------
-export const getDashboardStats = impl.getDashboardStats;
+export const {
+  authenticate,
+  signOut,
+  getAuthNid,
+  getLoginEmail,
+  requestPasswordReset,
+  redeemEmailLink,
+  setPassword,
+  changePassword,
+  changeLoginEmail,
+  getMfaStatus,
+  startMfaEnrollment,
+  verifyMfa,
+  disableMfa,
+  getProfile,
+  updateProfile,
+  listClients,
+  getClient,
+  createClient,
+  updateClient,
+  deleteClient,
+  listConsultations,
+  listAllConsultations,
+  getConsultation,
+  createConsultation,
+  updateConsultation,
+  deleteConsultation,
+  listConsultationTypes,
+  createConsultationType,
+  updateConsultationType,
+  deleteConsultationType,
+  listBillingEntries,
+  createBillingEntry,
+  updateBillingEntry,
+  deleteBillingEntry,
+  listPlans,
+  getPlan,
+  createPlan,
+  updatePlan,
+  deletePlan,
+  listFoods,
+  createFood,
+  updateFood,
+  listRecipes,
+  createRecipe,
+  updateRecipe,
+  deleteRecipe,
+  listRecommendations,
+  createRecommendation,
+  updateRecommendation,
+  deleteRecommendation,
+  listTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  listAppointments,
+  getAppointment,
+  createAppointment,
+  updateAppointment,
+  deleteAppointment,
+  listSentMessages,
+  tenantReminderStore,
+  cronReminderStore,
+  listPdfTemplates,
+  getPdfTemplate,
+  createPdfTemplate,
+  deletePdfTemplate,
+  putFile,
+  getFile,
+  deleteFile,
+} = impl;
 
 // --- Backend-agnostic helpers ----------------------------------------------
-const uid = (p: string) =>
-  typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${p}-${Math.random().toString(36).slice(2, 9)}`;
-
-export function newMessageId(): string {
-  return uid("msg");
-}
 
 export function blankMeal(name = ""): Meal {
-  return { id: uid("meal"), name, options: [{ id: uid("opt"), content: "" }] };
+  return { id: newId("meal"), name, options: [{ id: newId("opt"), content: "" }] };
 }
 
-/** Autocomplete suggestions from a client's history (meal contents seen before). */
+export async function getLastConsultation(clientId: string) {
+  return (await listConsultations(clientId))[0];
+}
+
+/** Clients keyed by id — for joining names onto lists without N+1 lookups. */
+export async function clientMap(): Promise<Map<string, Client>> {
+  return new Map((await listClients()).map((c) => [c.id, c]));
+}
+
+/** Autocomplete suggestions from a client's history (meal option texts seen before). */
 export async function getMealSuggestions(clientId: string): Promise<string[]> {
   const plans = await listPlans(clientId);
   const set = new Set<string>();
   for (const p of plans) {
     for (const meal of p.meals) {
       for (const opt of meal.options) {
-        if (opt.content.trim() && opt.content.length < 120) set.add(opt.content.trim());
+        const text = opt.content.trim();
+        if (text && text.length < 120) set.add(text);
       }
     }
   }
-  return [...set].slice(0, 20);
+  return [...set].slice(0, 30);
+}
+
+export async function getDashboardStats() {
+  const [clients, consultations, appts, plans, billing] = await Promise.all([
+    listClients(),
+    listAllConsultations(),
+    listAppointments(),
+    listPlans(),
+    listBillingEntries(),
+  ]);
+  const byId = new Map(clients.map((c) => [c.id, c]));
+  const monthStart = monthStartISO();
+  const now = Date.now();
+
+  const upcoming = appts
+    .filter((a) => a.status === "scheduled" && new Date(a.date).getTime() >= now)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  // A client is "active" when seen in the last 6 months.
+  const sixMonthsAgo = new Date(now - 182 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const activeIds = new Set(consultations.filter((c) => c.date >= sixMonthsAgo).map((c) => c.clientId));
+
+  return {
+    totalClients: clients.length,
+    activeClients: activeIds.size,
+    newClientsThisMonth: clients.filter((c) => onOrAfter(c.createdAt, monthStart)).length,
+    totalConsultations: consultations.length,
+    consultationsThisMonth: consultations.filter((c) => c.date >= monthStart).length,
+    plansGenerated: plans.length,
+    upcomingCount: upcoming.length,
+    revenueThisMonth: billing.filter((b) => b.date >= monthStart).reduce((s, b) => s + b.amount, 0),
+    pendingRevenue: billing.filter((b) => b.status === "pending").reduce((s, b) => s + b.amount, 0),
+    recentConsultationList: consultations.slice(0, 6).map((c) => ({
+      consultation: c,
+      client: byId.get(c.clientId),
+      bmi: computeBmi(c.measurements),
+    })),
+    upcomingList: upcoming.slice(0, 5).map((a) => ({ appointment: a, client: byId.get(a.clientId) })),
+  };
 }

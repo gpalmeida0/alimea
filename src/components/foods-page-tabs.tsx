@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Apple, Activity, Database } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Activity, Apple, Database } from "lucide-react";
+import { Segmented } from "@/components/ui/tabs";
 import { FoodExplorer } from "@/components/food-explorer";
 import { MetsExplorer } from "@/components/mets-explorer";
 import { FoodsManager } from "@/components/foods-manager";
@@ -16,45 +16,19 @@ export function FoodsPageTabs({ foods }: { foods: DbFood[] }) {
 
   return (
     <div>
-      <div className="mb-4 inline-flex flex-wrap rounded-md border border-border bg-card p-0.5">
-        <Tab active={tab === "mine"} onClick={() => setTab("mine")} icon={<Database className="size-4" />}>
-          {tn("myFoods")}
-        </Tab>
-        <Tab active={tab === "db"} onClick={() => setTab("db")} icon={<Apple className="size-4" />}>
-          {tn("builtInFoods")}
-        </Tab>
-        <Tab active={tab === "mets"} onClick={() => setTab("mets")} icon={<Activity className="size-4" />}>
-          {tm("title")}
-        </Tab>
-      </div>
+      <Segmented
+        value={tab}
+        onChange={setTab}
+        className="mb-5"
+        items={[
+          { value: "mine", label: tn("myFoods"), icon: <Database />, badge: <span className="text-xs opacity-70">{foods.filter((f) => !f.archived).length}</span> },
+          { value: "db", label: tn("builtInFoods"), icon: <Apple /> },
+          { value: "mets", label: tm("title"), icon: <Activity /> },
+        ]}
+      />
       {tab === "mine" && <FoodsManager foods={foods} />}
-      {tab === "db" && <FoodExplorer />}
+      {tab === "db" && <FoodExplorer ownNames={foods.map((f) => f.name)} />}
       {tab === "mets" && <MetsExplorer />}
     </div>
-  );
-}
-
-function Tab({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand text-white" : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {icon}
-      {children}
-    </button>
   );
 }

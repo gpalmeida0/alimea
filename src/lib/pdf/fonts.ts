@@ -4,8 +4,16 @@ import type { PDFDocument, PDFFont } from "pdf-lib";
 
 const FONT_DIR = join(process.cwd(), "src", "lib", "pdf", "fonts");
 
+const cache = new Map<string, Buffer>();
+
+/** Font files are read once per server instance. */
 function load(name: string): Buffer {
-  return readFileSync(join(FONT_DIR, name));
+  let buf = cache.get(name);
+  if (!buf) {
+    buf = readFileSync(join(FONT_DIR, name));
+    cache.set(name, buf);
+  }
+  return buf;
 }
 
 export interface AlimeaFonts {
