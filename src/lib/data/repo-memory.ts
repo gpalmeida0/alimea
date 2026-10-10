@@ -45,6 +45,7 @@ import type {
 } from "./repo-types";
 import {
   seedAppointments,
+  seedBillingEntries,
   seedClients,
   seedConsultations,
   seedFoods,
@@ -109,7 +110,7 @@ function store(): Store {
         price: t.price,
         isDefault: true,
       })),
-      billingEntries: [],
+      billingEntries: structuredClone(seedBillingEntries),
       foods: structuredClone(seedFoods),
       recipes: [],
       files: new Map(),

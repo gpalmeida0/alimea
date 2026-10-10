@@ -1,5 +1,6 @@
 import type {
   Appointment,
+  BillingEntry,
   Client,
   Consultation,
   DbFood,
@@ -365,3 +366,34 @@ export const seedAppointments: Appointment[] = [
     reminderSentAt: at(-29, 9),
   },
 ];
+
+// A few months of billing history, denser towards today, with some unpaid entries.
+const BILLING_ROWS: [daysBack: number, client: string, type: string, amount: number, paid: boolean][] = [
+  [1, "Gonçalo Almeida", "Presencial", 40, false],
+  [3, "Sofia Almeida", "Online", 35, true],
+  [6, "Miguel Santos", "Presencial", 40, true],
+  [9, "Gonçalo Almeida", "Beat", 50, true],
+  [13, "Sofia Almeida", "Presencial", 40, false],
+  [18, "Miguel Santos", "Online", 35, true],
+  [24, "Gonçalo Almeida", "Presencial", 40, true],
+  [33, "Sofia Almeida", "Beat", 50, true],
+  [38, "Miguel Santos", "Presencial", 40, false],
+  [47, "Gonçalo Almeida", "Online", 35, true],
+  [61, "Sofia Almeida", "Presencial", 40, true],
+  [75, "Miguel Santos", "Beat", 50, true],
+  [96, "Gonçalo Almeida", "Presencial", 40, true],
+  [124, "Sofia Almeida", "Online", 35, true],
+  [150, "Miguel Santos", "Presencial", 40, true],
+];
+
+export const seedBillingEntries: BillingEntry[] = BILLING_ROWS.map(([back, clientName, typeName, amount, paid], i) => ({
+  id: `bill-${i + 1}`,
+  nutritionistId: seedProfile.id,
+  clientName,
+  typeName,
+  amount,
+  date: daysAgo(back),
+  status: paid ? "paid" : "pending",
+  source: "manual",
+  createdAt: new Date(Date.now() - back * DAY).toISOString(),
+}));

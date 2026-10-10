@@ -447,7 +447,7 @@
   },
   "billing": {
     "title": "Billing",
-    "subtitle": "Consultation revenue and manual entries.",
+    "subtitle": "Revenue, trends and payments for your practice.",
     "total": "Total billed",
     "paid": "Paid",
     "pending": "Pending",
@@ -487,7 +487,48 @@
     "typesHint": "Each new consultation is billed with its type's price.",
     "deleteTypeTitle": "Delete “{name}”?",
     "deleteTypeBody": "Existing billing entries keep their name and amount.",
-    "fileName": "billing"
+    "fileName": "billing",
+    "insights": {
+      "title": "Overview",
+      "periods": {
+        "week": "Week",
+        "month": "Month",
+        "quarter": "Quarter",
+        "year": "Year"
+      },
+      "billed": "Billed",
+      "received": "Received",
+      "toReceive": "To receive",
+      "consultations": "Entries",
+      "vsPrevious": {
+        "week": "vs last week",
+        "month": "vs last month",
+        "quarter": "vs last quarter",
+        "year": "vs last year"
+      },
+      "noBaseline": "Nothing to compare with yet",
+      "outstandingAll": "{amount} owed in total",
+      "average": "{amount} on average",
+      "noEntries": "No entries in this period.",
+      "chartTitle": {
+        "week": "Revenue by day",
+        "month": "Revenue by week",
+        "quarter": "Revenue by month",
+        "year": "Revenue by month"
+      },
+      "byType": "By consultation type",
+      "topClients": "Top clients",
+      "entryCount": "{count, plural, one {# entry} other {# entries}}",
+      "outstanding": "Awaiting payment",
+      "outstandingHint": "Oldest first, across all periods.",
+      "nothingOwed": "Everything is paid.",
+      "daysAgo": "{count, plural, =0 {Today} one {# day ago} other {# days ago}}",
+      "moreOwed": "{count, plural, one {and # more} other {and # more}}",
+      "cancellations": "{cancelled} of {total} appointments cancelled ({rate}%)",
+      "noAppointments": "No past appointments in this period."
+    },
+    "entries": "Entries",
+    "entriesSummary": "{count, plural, one {# entry} other {# entries}} · {total}"
   },
   "consultation": {
     "title": "Consultation",

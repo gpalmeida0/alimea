@@ -447,7 +447,7 @@
   },
   "billing": {
     "title": "Faturação",
-    "subtitle": "Receitas das consultas e lançamentos manuais.",
+    "subtitle": "Receita, tendências e pagamentos da sua prática.",
     "total": "Total faturado",
     "paid": "Pago",
     "pending": "Pendente",
@@ -487,7 +487,48 @@
     "typesHint": "Cada nova consulta é faturada com o preço do respetivo tipo.",
     "deleteTypeTitle": "Eliminar “{name}”?",
     "deleteTypeBody": "Os registos existentes mantêm o nome e o valor.",
-    "fileName": "faturacao"
+    "fileName": "faturacao",
+    "insights": {
+      "title": "Resumo",
+      "periods": {
+        "week": "Semana",
+        "month": "Mês",
+        "quarter": "Trimestre",
+        "year": "Ano"
+      },
+      "billed": "Faturado",
+      "received": "Recebido",
+      "toReceive": "Por receber",
+      "consultations": "Registos",
+      "vsPrevious": {
+        "week": "face à semana anterior",
+        "month": "face ao mês anterior",
+        "quarter": "face ao trimestre anterior",
+        "year": "face ao ano anterior"
+      },
+      "noBaseline": "Ainda sem termo de comparação",
+      "outstandingAll": "{amount} em dívida no total",
+      "average": "{amount} em média",
+      "noEntries": "Sem registos neste período.",
+      "chartTitle": {
+        "week": "Receita por dia",
+        "month": "Receita por semana",
+        "quarter": "Receita por mês",
+        "year": "Receita por mês"
+      },
+      "byType": "Por tipo de consulta",
+      "topClients": "Principais clientes",
+      "entryCount": "{count, plural, one {# registo} other {# registos}}",
+      "outstanding": "A aguardar pagamento",
+      "outstandingHint": "Dos mais antigos para os mais recentes, em todos os períodos.",
+      "nothingOwed": "Está tudo pago.",
+      "daysAgo": "{count, plural, =0 {Hoje} one {Há # dia} other {Há # dias}}",
+      "moreOwed": "{count, plural, one {e mais #} other {e mais #}}",
+      "cancellations": "{cancelled} de {total} marcações canceladas ({rate}%)",
+      "noAppointments": "Sem marcações passadas neste período."
+    },
+    "entries": "Registos",
+    "entriesSummary": "{count, plural, one {# registo} other {# registos}} · {total}"
   },
   "consultation": {
     "title": "Consulta",

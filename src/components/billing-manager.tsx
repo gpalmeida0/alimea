@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { CalendarDays, Check, Clock, Download, Pencil, Plus, Receipt, Settings2, Trash2, Wallet } from "lucide-react";
+import { Check, Download, Pencil, Plus, Receipt, Settings2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { useFeedback } from "@/components/ui/feedback";
 import { Field, Input, NumberInput, Select, Textarea } from "@/components/ui/input";
-import { Badge, EmptyState, Stat } from "@/components/ui/misc";
+import { Badge, EmptyState } from "@/components/ui/misc";
 import { useServerAction } from "@/hooks/use-server-action";
-import { formatDate, monthStartISO, todayISO } from "@/lib/utils";
+import { formatDate, todayISO } from "@/lib/utils";
 import {
   createBillingEntryAction,
   createConsultationTypeAction,
@@ -65,16 +65,7 @@ export function BillingManager({
   const months = useMemo(() => [...new Set(entries.map((e) => e.date.slice(0, 7)))].sort().reverse(), [entries]);
   const visible = entries.filter((e) => (status === "all" || e.status === status) && (month === "all" || e.date.startsWith(month)));
 
-  const totals = useMemo(() => {
-    const monthStart = monthStartISO();
-    const sum = (list: BillingEntry[]) => list.reduce((s, e) => s + e.amount, 0);
-    return {
-      total: sum(visible),
-      paid: sum(visible.filter((e) => e.status === "paid")),
-      pending: sum(visible.filter((e) => e.status === "pending")),
-      month: sum(entries.filter((e) => e.date >= monthStart)),
-    };
-  }, [entries, visible]);
+  const total = visible.reduce((sum, e) => sum + e.amount, 0);
 
   function exportCsv() {
     const header = [t("date"), t("client"), t("type"), t("amount"), t("status"), t("notes")];
@@ -93,11 +84,9 @@ export function BillingManager({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Stat label={month === "all" ? t("total") : t("totalIn", { month: monthLabel(month) })} value={eur.format(totals.total)} icon={<Receipt />} />
-        <Stat label={t("paid")} value={eur.format(totals.paid)} icon={<Wallet />} />
-        <Stat label={t("pending")} value={eur.format(totals.pending)} icon={<Clock />} tone="accent" />
-        <Stat label={t("thisMonth")} value={eur.format(totals.month)} icon={<CalendarDays />} />
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-serif text-xl font-semibold">{t("entries")}</h2>
+        <p className="text-sm text-muted-foreground">{t("entriesSummary", { count: visible.length, total: eur.format(total) })}</p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
