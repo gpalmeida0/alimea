@@ -123,3 +123,19 @@ test("METs: categories, search by activity or category, and energy spent", () =>
   assert.deepEqual(searchMets("zzzz-no-such-activity"), []);
   assert.equal(metKcal(8, 70, 30), 280);
 });
+
+test("built-in foods can be used as recipe ingredients and copied into the account", async () => {
+  const { BUILT_IN_PREFIX, builtInFood, builtInFoods } = await import("@/lib/nutrition/foods");
+  const all = builtInFoods();
+  assert.ok(all.length > 100 && all.length <= FOODS.length);
+  assert.ok(all.every((f) => f.id.startsWith(BUILT_IN_PREFIX) && f.refQty > 0 && typeof f.kcal === "number"));
+  const first = all[0];
+  const copy = builtInFood(first.id)!;
+  assert.deepEqual(copy, { name: first.name, baseUnit: "g", refQty: first.refQty, kcal: first.kcal, protein: first.protein, carbs: first.carbs, fat: first.fat, category: first.category });
+  assert.equal("id" in copy, false);
+  assert.equal(builtInFood("some-db-id"), undefined);
+  assert.equal(builtInFood(`${BUILT_IN_PREFIX}999999`), undefined);
+  // Usable directly in recipe totals before the recipe is saved.
+  const recipe = { id: "r", name: "x", servings: 1, items: [{ id: "i", foodId: first.id, name: first.name, qty: first.refQty }] } as unknown as Recipe;
+  assert.equal(recipeTotals(recipe, all as unknown as DbFood[]).total.kcal, first.kcal);
+});

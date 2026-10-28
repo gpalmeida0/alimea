@@ -153,6 +153,13 @@ foregrounds from a single colour — and the app layout inlines them, so the
 theme is correct on first paint. Stored in `profiles.appearance` (migration
 `0006`). Generated PDFs keep their own template design.
 
+## Backups
+
+`.github/workflows/backup.yml` takes an encrypted backup of the database
+(app data and accounts) and the uploaded files every Sunday and keeps the last
+90 days on GitHub. Setup (four repository secrets) and the restore procedure
+are in [docs/backups.md](docs/backups.md).
+
 ## CI & coverage
 
 `.github/workflows/ci.yml` runs on every push (any branch), every pull request

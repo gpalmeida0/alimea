@@ -5,6 +5,8 @@ import {
   heightCmOf,
   sumPerimeters,
   sumSkinfolds,
+  type FoodItem,
+  type MealOption,
   type Measurements,
   type PlanDocumentData,
   type PlanLanguage,
@@ -209,11 +211,9 @@ function measurementRows(ctx: Ctx, cur: Measurements, prev?: Measurements): Meas
     row(L.peitoral, S("peitoral")),
     { kind: "row", label: L.sumSkinfolds, v1: sumSkinfolds(cur), v2: prev && sumSkinfolds(prev), band: true, optional: true },
     { kind: "heading", label: L.anthropometry },
-    row(L.bodyFat, [cur.bodyFatPct, prev?.bodyFatPct], false),
-    row(L.muscleMass, [cur.muscleMassKg, prev?.muscleMassKg], false),
-    row(L.leanMass, [cur.leanMassKg, prev?.leanMassKg]),
-    row(L.water, [cur.waterPct, prev?.waterPct]),
-    row(L.visceralFat, [cur.visceralFat, prev?.visceralFat]),
+    // The values chosen on the Results tab — never the bioimpedance readouts.
+    row(L.bodyFat, [cur.results?.bodyFatPct, prev?.results?.bodyFatPct], false),
+    row(L.muscleMass, [cur.results?.muscleMassKg, prev?.results?.muscleMassKg], false),
   ];
   // Optional rows are only printed when there is a value to show.
   return rows.filter((r) => r.kind !== "row" || !r.optional || r.v1 != null || r.v2 != null);
@@ -275,7 +275,9 @@ function drawMeasurements(ctx: Ctx) {
 // ---------------------------------------------------------------------------
 function drawMeals(ctx: Ctx) {
   const { f, L, data } = ctx;
-  const meals = data.plan.meals.filter((m) => m.name.trim() || m.options.some((o) => o.content.trim() || o.items?.length));
+  // Some plans print only what the nutritionist wrote, without the food list.
+  const itemsOf = (o: MealOption) => (data.plan.hideFoodItems ? [] : (o.items ?? []));
+  const meals = data.plan.meals.filter((m) => m.name.trim() || m.options.some((o) => o.content.trim() || itemsOf(o).length));
   if (!meals.length) return;
   const flow = new Flow(ctx);
   const SIZE = 11.5;
@@ -288,12 +290,12 @@ function drawMeals(ctx: Ctx) {
     flow.page.drawText(title, { x: MARGIN + 20, y: flow.y, font: f.scBold, size: 22, color: INK });
     flow.y -= 36;
 
-    const options = meal.options.filter((o) => o.content.trim() || o.items?.length);
+    const options = meal.options.filter((o) => o.content.trim() || itemsOf(o).length);
     const multi = options.length > 1;
     options.forEach((opt, i) => {
       const x = multi ? contentX : MARGIN + 8;
       const maxW = PAGE_W - MARGIN - x;
-      const itemLines = (opt.items ?? []).map((it) => `• ${formatItem(it, L.portion)}`);
+      const itemLines = itemsOf(opt).map((it: FoodItem) => `• ${formatItem(it, L.portion)}`);
       const text = [opt.content.trim(), ...itemLines].filter(Boolean).join("\n");
       const lines = wrapLines(f.body, text, SIZE, maxW);
 

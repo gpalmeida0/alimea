@@ -51,7 +51,7 @@
     "foodsDbTitle": "My foods",
     "foodsDbSubtitle": "Your editable food database, used in plans and recipes.",
     "myFoods": "My foods",
-    "builtInFoods": "Nutrition database",
+    "builtInFoods": "Nutrition base",
     "addFood": "Add food",
     "editFood": "Edit food",
     "name": "Name",
@@ -414,7 +414,16 @@
       "name": "Name (A–Z)",
       "recent": "Most recent consultation",
       "newest": "Newest clients"
-    }
+    },
+    "nif": "Tax number (NIF)",
+    "healthInsurer": "Health insurance",
+    "healthInsurerHint": "Insurer name, if any.",
+    "insuranceNumber": "Insurance number",
+    "voucher": "Cheque-nutricionista",
+    "voucherHint": "Covered by the government voucher: consultations are recorded at €0.",
+    "voucherBadge": "Cheque-nutricionista",
+    "dataConsent": "Data-processing notice given on",
+    "dataConsentHint": "Date the client was informed and agreed (GDPR)."
   },
   "client": {
     "overview": "Overview",
@@ -620,7 +629,38 @@
     "templateReplace": "Replace current meals",
     "saveAsTemplateHint": "Reuse this plan's meals, supplementation and notes for other clients.",
     "templateName": "Template name",
-    "templateSaved": "Template saved"
+    "templateSaved": "Template saved",
+    "swap": {
+      "open": "Find equivalents",
+      "title": "Equivalent foods",
+      "subtitle": "Same energy, similar protein, carbohydrate and fat.",
+      "replace": "Use this",
+      "none": "No close equivalents in your food database for this one.",
+      "noneRecipe": "Recipes have no equivalents. Swap their ingredients instead.",
+      "copy": "Copy list",
+      "copied": "Copied",
+      "copyHeading": "Instead of {food}:"
+    },
+    "shopping": {
+      "open": "Shopping list",
+      "title": "Shopping list",
+      "subtitle": "Everything this plan needs, added up by food.",
+      "period": "For",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "options": "Meal options",
+      "firstOption": "First option only",
+      "allOptions": "Alternate all options",
+      "other": "Other",
+      "empty": "Add foods from the database to the plan to build a shopping list.",
+      "hint": "Counts the foods added from the database. Free-text lines are not included. Quantities are rounded up.",
+      "copy": "Copy",
+      "copied": "Copied — paste it into WhatsApp or an email",
+      "print": "Print",
+      "textTitle": "Shopping list — {count, plural, one {# day} other {# days}}",
+      "portions": "{count, plural, one {portion} other {portions}}"
+    },
+    "hideFoodItems": "Print only my text",
+    "hideFoodItemsHint": "Leave the list of database foods out of this plan's PDF."
   },
   "recommendations": {
     "title": "Reusable recommendations",

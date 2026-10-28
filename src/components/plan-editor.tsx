@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
+  ArrowLeftRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -11,6 +12,7 @@ import {
   Eye,
   LayoutTemplate,
   Plus,
+  ShoppingCart,
   Sparkles,
   Trash2,
   Utensils,
@@ -25,6 +27,7 @@ import { Field, Input, Label, NumberInput, Select, Textarea } from "@/components
 import { Segmented } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/misc";
 import { FoodPicker } from "@/components/food-picker";
+import { ShoppingListDialog, SubstituteDialog } from "@/components/plan-extras";
 import { useServerAction } from "@/hooks/use-server-action";
 import { deletePlanAction, duplicateCurrentPlanAction, saveAsTemplateAction } from "@/app/actions";
 import { cloneMeals, optionTotals, planTotals, roundTotals, hasItems, type Totals } from "@/lib/nutrition/items";
@@ -44,6 +47,7 @@ export interface PlanDraft {
   notes: string;
   motivationalQuote: string;
   nextAppointment: string;
+  hideFoodItems: boolean;
 }
 
 export interface RecLite {
@@ -112,6 +116,8 @@ export function PlanEditor({
   const [picker, setPicker] = useState<{ mealId: string; optId: string } | null>(null);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [templateDialog, setTemplateDialog] = useState<"apply" | "save" | null>(null);
+  const [swap, setSwap] = useState<{ mealId: string; optId: string; item: FoodItem } | null>(null);
+  const [shopping, setShopping] = useState(false);
 
   const set = <K extends keyof PlanDraft>(key: K, value: PlanDraft[K]) => update((d) => ({ ...d, [key]: value }));
   const setMeals = (fn: (meals: Meal[]) => Meal[]) => update((d) => ({ ...d, meals: fn(d.meals) }));
@@ -312,6 +318,7 @@ export function PlanEditor({
             onDuplicate={() => setMeals((ms) => [...ms.slice(0, i + 1), ...cloneMeals([meal]), ...ms.slice(i + 1)])}
             onRemove={() => removeMeal(meal)}
             onAddFood={(optId) => setPicker({ mealId: meal.id, optId })}
+            onSwap={(optId, item) => setSwap({ mealId: meal.id, optId, item })}
           />
         ))}
 
@@ -363,6 +370,13 @@ export function PlanEditor({
                 </Select>
               </Field>
             )}
+            <label className="flex items-start gap-2.5 text-sm">
+              <input type="checkbox" className="mt-0.5 size-4 accent-brand" checked={draft.hideFoodItems} onChange={(e) => set("hideFoodItems", e.target.checked)} />
+              <span>
+                {t("hideFoodItems")}
+                <span className="block text-xs text-muted-foreground">{t("hideFoodItemsHint")}</span>
+              </span>
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <Button onClick={download} className="col-span-2">
                 <Download /> {t("generate")}
@@ -384,6 +398,13 @@ export function PlanEditor({
                 }}
               >
                 <Copy className="size-3.5" /> {t("duplicatePlan")}
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+                onClick={() => setShopping(true)}
+              >
+                <ShoppingCart className="size-3.5" /> {t("shopping.open")}
               </button>
               <button
                 type="button"
@@ -443,6 +464,15 @@ export function PlanEditor({
         />
       )}
 
+      {swap && (
+        <SubstituteDialog
+          item={swap.item}
+          dbFoods={ctx.dbFoods}
+          onReplace={(next) => patchOption(swap.mealId, swap.optId, (o) => ({ ...o, items: (o.items ?? []).map((x) => (x.id === next.id ? next : x)) }))}
+          onClose={() => setSwap(null)}
+        />
+      )}
+      {shopping && <ShoppingListDialog meals={draft.meals} dbFoods={ctx.dbFoods} recipes={ctx.recipes} onClose={() => setShopping(false)} />}
       {templateDialog === "apply" && (
         <ApplyTemplateDialog
           templates={ctx.templates}
@@ -488,6 +518,7 @@ function MealCard({
   onDuplicate,
   onRemove,
   onAddFood,
+  onSwap,
 }: {
   meal: Meal;
   index: number;
@@ -499,6 +530,7 @@ function MealCard({
   onDuplicate: () => void;
   onRemove: () => void;
   onAddFood: (optId: string) => void;
+  onSwap: (optId: string, item: FoodItem) => void;
 }) {
   const t = useTranslations("plan");
   const tcom = useTranslations("common");
@@ -613,6 +645,17 @@ function MealCard({
                     />
                     <span className="w-10 text-muted-foreground">{it.unit === "porção" ? t("portion") : (it.unit ?? "g")}</span>
                     <span className="w-16 text-right font-medium lining-nums tabular-nums">{Math.round(it.qtyG * it.perG.kcal)} kcal</span>
+                    {it.kind !== "recipe" && (
+                      <button
+                        type="button"
+                        onClick={() => onSwap(opt.id, it)}
+                        className="text-muted-foreground hover:text-brand-600"
+                        aria-label={`${it.name} — ${t("swap.open")}`}
+                        title={t("swap.open")}
+                      >
+                        <ArrowLeftRight className="size-3.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onOption(opt.id, (o) => ({ ...o, items: (o.items ?? []).filter((x) => x.id !== it.id) }))}

@@ -56,6 +56,7 @@ export default async function PlanPage({ params }: { params: Promise<{ locale: s
     notes: plan.notes ?? "",
     motivationalQuote: plan.motivationalQuote ?? "",
     nextAppointment: plan.nextAppointment ?? "",
+    hideFoodItems: plan.hideFoodItems ?? false,
   };
   const ctx: PlanEditorContext = {
     planId: plan.id,

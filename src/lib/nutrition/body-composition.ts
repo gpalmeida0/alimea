@@ -35,7 +35,6 @@ const pos = (...xs: (number | undefined)[]) =>
 
 // Siri equations converting body density (BD) → % fat.
 const siri495 = (bd?: number) => (pos(bd) ? (4.95 / bd! - 4.5) * 100 : undefined);
-const siri501 = (bd?: number) => (pos(bd) ? (5.01 / bd! - 4.57) * 100 : undefined);
 
 function bmiOf(i: BodyCompInput): number | undefined {
   if (i.bmi) return i.bmi;
@@ -57,193 +56,23 @@ const raceNum = (e?: Ethnicity) => (e === "black" ? 1 : 0);
 // % BODY FAT
 // ---------------------------------------------------------------------------
 
-function adultAthleteFat(i: BodyCompInput): FormulaResult[] {
+/** Adults: the two skinfold equations the practice uses (Evans, Withers). */
+function adultFat(i: BodyCompInput): FormulaResult[] {
   const s = i.skinfolds;
-  const age = i.ageYears;
-  const out: FormulaResult[] = [];
 
   // Evans et al — %BF = 8.9976 + 0.24658·Σ(abd+crural+tri) − 6.343·sex − 1.998·race
-  out.push({
-    key: "evans",
-    label: "Evans et al",
-    value: pos(s.abdominal, s.crural, s.tricipital)
-      ? r1(
-          8.9976 +
-            0.24658 * (s.abdominal! + s.crural! + s.tricipital!) -
-            6.343 * sexNum(i.sex) -
-            1.998 * raceNum(i.ethnicity),
-        )
-      : undefined,
-  });
+  const evans = pos(s.abdominal, s.crural, s.tricipital)
+    ? r1(8.9976 + 0.24658 * (s.abdominal! + s.crural! + s.tricipital!) - 6.343 * sexNum(i.sex) - 1.998 * raceNum(i.ethnicity))
+    : undefined;
 
-  // Whiters et al — BD = 1.0988 − 0.0004·Σ7 → Siri 4.95
-  const sum7w = [
-    s.tricipital,
-    s.subscapular,
-    s.bicipital,
-    s.supraspinal,
-    s.abdominal,
-    s.crural,
-    s.geminal,
+  // Withers et al — BD = 1.0988 − 0.0004·Σ7 → Siri 4.95
+  const sum7 = [s.tricipital, s.subscapular, s.bicipital, s.supraspinal, s.abdominal, s.crural, s.geminal];
+  const withers = pos(...sum7) ? r1(siri495(1.0988 - 0.0004 * sum7.reduce((a, b) => a! + b!, 0)!)!) : undefined;
+
+  return [
+    { key: "evans", label: "Evans et al", value: evans },
+    { key: "whiters", label: "Withers et al", value: withers },
   ];
-  out.push({
-    key: "whiters",
-    label: "Whiters et al",
-    value: pos(...sum7w)
-      ? r1(siri495(1.0988 - 0.0004 * sum7w.reduce((a, b) => a! + b!, 0)!)!)
-      : undefined,
-  });
-
-  // Reilly et al (footballers, men) — direct %BF
-  out.push({
-    key: "reilly",
-    label: "Reilly et al (Futebol H)",
-    value:
-      i.sex === "male" && pos(s.crural, s.abdominal, s.tricipital, s.geminal)
-        ? r1(5.174 + 0.124 * s.crural! + 0.147 * s.abdominal! + 0.196 * s.tricipital! + 0.13 * s.geminal!)
-        : undefined,
-  });
-
-  // Jackson et al — sex-specific density → Siri
-  if (i.sex === "male") {
-    const sum7 = [s.peitoral, s.tricipital, s.subscapular, s.abdominal, s.supraspinal, s.crural, s.bicipital];
-    out.push({
-      key: "jackson",
-      label: "Jackson et al (Homens)",
-      value:
-        pos(...sum7) && num(age)
-          ? (() => {
-              const sum = sum7.reduce((a, b) => a! + b!, 0)!;
-              const d = 1.112 - 0.00043499 * sum + 0.00000055 * sum * sum - 0.00028826 * age!;
-              return r1(siri495(d)!);
-            })()
-          : undefined,
-    });
-  } else {
-    const set = [s.subscapular, s.abdominal, s.iliocristal, s.crural];
-    out.push({
-      key: "jackson",
-      label: "Jackson et al (Mulheres)",
-      value:
-        pos(...set) && num(age)
-          ? (() => {
-              const sum = set.reduce((a, b) => a! + b!, 0)!;
-              const d = 1.096095 - 0.0006952 * sum + 0.0000011 * sum * sum - 0.0000714 * age!;
-              return r1(siri501(d)!);
-            })()
-          : undefined,
-    });
-  }
-  return out;
-}
-
-function adultNonAthleteFat(i: BodyCompInput): FormulaResult[] {
-  const s = i.skinfolds;
-  const age = i.ageYears;
-  const bmi = bmiOf(i);
-  const h = i.heightCm;
-  const out: FormulaResult[] = [];
-
-  if (i.sex === "male") {
-    // Peterson et al (men) — sum4: tri + subsc + supra + abdominal
-    const sum4 = [s.tricipital, s.subscapular, s.supraspinal, s.abdominal];
-    out.push({
-      key: "peterson",
-      label: "Peterson et al",
-      value:
-        pos(...sum4) && num(age) && pos(h)
-          ? (() => {
-              const sum = sum4.reduce((a, b) => a! + b!, 0)!;
-              return r1(20.94878 + 0.1166 * age! - 0.11666 * h! + 0.42696 * sum - 0.00159 * sum * sum);
-            })()
-          : undefined,
-    });
-    // Jackson et al (men) — density from tri + subsc + peitoral
-    const j = [s.tricipital, s.subscapular, s.peitoral];
-    out.push({
-      key: "jackson",
-      label: "Jackson et al",
-      value:
-        pos(...j) && num(age)
-          ? (() => {
-              const sum = j.reduce((a, b) => a! + b!, 0)!;
-              const d = 1.1125025 - 0.0013125 * sum + 0.0000055 * sum * sum - 0.000244 * age!;
-              return r1(siri495(d)!);
-            })()
-          : undefined,
-    });
-    // Deurenberg et al (men): 1.20·BMI + 0.23·age − 16.2
-    out.push({
-      key: "deurenberg",
-      label: "Deurenberg et al",
-      value: pos(bmi) && num(age) ? r1(1.2 * bmi! - 10.8 + 0.23 * age! - 5.4) : undefined,
-    });
-    // Sun et al (men) — sum4: tri + abdominal + subsc + iliocristal
-    const sun = [s.tricipital, s.abdominal, s.subscapular, s.iliocristal];
-    out.push({
-      key: "sun",
-      label: "Sun et al",
-      value:
-        pos(...sun) && num(age) && pos(h)
-          ? (() => {
-              const sum = sun.reduce((a, b) => a! + b!, 0)!;
-              return r1(20.94878 + 0.1166 * age! - 0.11666 * h! + 0.42696 * sum - 0.00159 * sum * sum);
-            })()
-          : undefined,
-    });
-  } else {
-    // Peterson et al (women) — sum4: tri + subsc + supra + geminal
-    const sum4 = [s.tricipital, s.subscapular, s.supraspinal, s.geminal];
-    out.push({
-      key: "peterson",
-      label: "Peterson et al",
-      value:
-        pos(...sum4) && num(age) && pos(bmi) && pos(h)
-          ? (() => {
-              const sum = sum4.reduce((a, b) => a! + b!, 0)!;
-              return r1(
-                22.18945 + 0.06368 * age! + 0.60404 * bmi! - 0.1452 * h! + 0.30919 * sum - 0.00099562 * sum * sum,
-              );
-            })()
-          : undefined,
-    });
-    // Jackson et al (women) — density from tri + abdominal + iliocristal
-    const j = [s.tricipital, s.abdominal, s.iliocristal];
-    out.push({
-      key: "jackson",
-      label: "Jackson et al",
-      value:
-        pos(...j) && num(age)
-          ? (() => {
-              const sum = j.reduce((a, b) => a! + b!, 0)!;
-              const d = 1.089733 - 0.0009245 * sum + 0.0000025 * sum * sum - 0.0000979 * age!;
-              return r1(siri501(d)!);
-            })()
-          : undefined,
-    });
-    // Deurenberg et al (women): 1.20·BMI + 0.23·age − 5.4
-    out.push({
-      key: "deurenberg",
-      label: "Deurenberg et al",
-      value: pos(bmi) && num(age) ? r1(1.2 * bmi! + 0.23 * age! - 5.4) : undefined,
-    });
-    // Sun et al (women) — sum4: tri + subsc + iliocristal + crural
-    const sun = [s.tricipital, s.subscapular, s.iliocristal, s.crural];
-    out.push({
-      key: "sun",
-      label: "Sun et al",
-      value:
-        pos(...sun) && num(age) && pos(bmi) && pos(h)
-          ? (() => {
-              const sum = sun.reduce((a, b) => a! + b!, 0)!;
-              return r1(
-                22.18945 + 0.06368 * age! + 0.60404 * bmi! - 0.1452 * h! + 0.30919 * sum - 0.00099562 * sum * sum,
-              );
-            })()
-          : undefined,
-    });
-  }
-  return out;
 }
 
 function youngFat(i: BodyCompInput): FormulaResult[] {
@@ -297,16 +126,9 @@ function youngFat(i: BodyCompInput): FormulaResult[] {
 }
 
 /** % body fat — applicable formulas + the average of those with a value. */
-export function bodyFatPercent(
-  i: BodyCompInput,
-  opts: { athlete?: boolean } = {},
-): { results: FormulaResult[]; average?: number } {
+export function bodyFatPercent(i: BodyCompInput): { results: FormulaResult[]; average?: number } {
   const young = (i.ageYears ?? 99) < 18;
-  const results = young
-    ? youngFat(i)
-    : opts.athlete
-      ? adultAthleteFat(i)
-      : adultNonAthleteFat(i);
+  const results = young ? youngFat(i) : adultFat(i);
   return { results, average: average(results) };
 }
 

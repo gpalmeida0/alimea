@@ -22,6 +22,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { newId, todayISO } from "@/lib/utils";
 import { normalizeAppearance } from "@/lib/theme";
+import { VOUCHER_NOTE } from "@/lib/billing/metrics";
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   AuthStatus,
@@ -96,6 +97,11 @@ const toClient = (r: Row): Client => ({
   profession: opt(r.profession),
   goals: opt(r.goals),
   notes: opt(r.notes),
+  nif: opt(r.nif),
+  healthInsurer: opt(r.health_insurer),
+  insuranceNumber: opt(r.insurance_number),
+  nutritionVoucher: r.nutrition_voucher === true || undefined,
+  dataConsentAt: r.data_consent_at ? dateOnly(r.data_consent_at) : undefined,
   anamnesis: opt(r.anamnesis),
   createdAt: r.created_at,
 });
@@ -180,6 +186,7 @@ const toPlan = (r: Row): MealPlan => ({
   notes: opt(r.notes),
   motivationalQuote: opt(r.motivational_quote),
   nextAppointment: opt(r.next_appointment),
+  hideFoodItems: r.hide_food_items === true || undefined,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -419,6 +426,11 @@ const CLIENT_COLUMNS = {
   profession: "profession",
   goals: "goals",
   notes: "notes",
+  nif: "nif",
+  healthInsurer: "health_insurer",
+  insuranceNumber: "insurance_number",
+  nutritionVoucher: "nutrition_voucher",
+  dataConsentAt: "data_consent_at",
   anamnesis: "anamnesis",
 } as const;
 
@@ -515,9 +527,11 @@ export async function createConsultation(
         consultation_id: consult.id,
         client_name: client.name,
         type_name: type?.name ?? "",
-        amount: type?.price ?? 0,
+        // Cheque-nutricionista: the client is not charged.
+        amount: client.nutritionVoucher ? 0 : (type?.price ?? 0),
         date: consult.date,
-        status: "pending",
+        status: client.nutritionVoucher ? "paid" : "pending",
+        notes: client.nutritionVoucher ? VOUCHER_NOTE : null,
         source: "auto",
       }),
     );
@@ -666,6 +680,7 @@ export async function createPlan(data: Partial<MealPlan> & { clientId: string })
           notes: data.notes ?? "",
           motivational_quote: data.motivationalQuote ?? "",
           next_appointment: data.nextAppointment ?? "",
+          hide_food_items: data.hideFoodItems ?? false,
         })
         .select("*")
         .single(),
@@ -691,6 +706,7 @@ export async function updatePlan(
       notes: "notes",
       motivationalQuote: "motivational_quote",
       nextAppointment: "next_appointment",
+      hideFoodItems: "hide_food_items",
     }),
     updated_at: new Date().toISOString(),
   };

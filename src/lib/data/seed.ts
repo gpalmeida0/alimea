@@ -80,8 +80,7 @@ export const seedConsultations: Consultation[] = [
     measurements: {
       weightKg: 78.6,
       heightCm: 178,
-      bodyFatPct: 21.4,
-      muscleMassKg: 34.1,
+      results: { bodyFatPct: 21.4, muscleMassKg: 34.1 },
       perimeters: { waist: 89.0, abdominal: 92.5, arm: 31.0, hip: 101.0, thigh: 57.5, calf: 37.5 },
       skinfolds: {
         tricipital: 14,
@@ -107,8 +106,7 @@ export const seedConsultations: Consultation[] = [
     measurements: {
       weightKg: 76.9,
       heightCm: 178,
-      bodyFatPct: 19.8,
-      muscleMassKg: 34.6,
+      results: { bodyFatPct: 19.8, muscleMassKg: 34.6 },
       perimeters: { waist: 86.5, abdominal: 89.0, arm: 31.5, hip: 99.5, thigh: 57.0, calf: 37.5 },
       skinfolds: {
         tricipital: 12,

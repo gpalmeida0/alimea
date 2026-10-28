@@ -414,7 +414,16 @@
       "name": "Nome (A–Z)",
       "recent": "Consulta mais recente",
       "newest": "Clientes mais recentes"
-    }
+    },
+    "nif": "NIF",
+    "healthInsurer": "Seguro de saúde",
+    "healthInsurerHint": "Nome da seguradora, se tiver.",
+    "insuranceNumber": "Número do seguro",
+    "voucher": "Cheque-nutricionista",
+    "voucherHint": "Abrangido pelo cheque do Estado: as consultas ficam registadas a 0 €.",
+    "voucherBadge": "Cheque-nutricionista",
+    "dataConsent": "Informação sobre tratamento de dados dada em",
+    "dataConsentHint": "Data em que o cliente foi informado e consentiu (RGPD)."
   },
   "client": {
     "overview": "Resumo",
@@ -620,7 +629,38 @@
     "templateReplace": "Substituir refeições atuais",
     "saveAsTemplateHint": "Reutilize as refeições, a suplementação e as notas deste plano noutros clientes.",
     "templateName": "Nome do modelo",
-    "templateSaved": "Modelo guardado"
+    "templateSaved": "Modelo guardado",
+    "swap": {
+      "open": "Ver equivalentes",
+      "title": "Alimentos equivalentes",
+      "subtitle": "A mesma energia, com proteína, hidratos e gordura semelhantes.",
+      "replace": "Usar este",
+      "none": "Sem equivalentes próximos na sua base de alimentos para este.",
+      "noneRecipe": "As receitas não têm equivalentes. Troque os ingredientes.",
+      "copy": "Copiar lista",
+      "copied": "Copiado",
+      "copyHeading": "Em vez de {food}:"
+    },
+    "shopping": {
+      "open": "Lista de compras",
+      "title": "Lista de compras",
+      "subtitle": "Tudo o que este plano precisa, somado por alimento.",
+      "period": "Para",
+      "days": "{count, plural, one {# dia} other {# dias}}",
+      "options": "Opções das refeições",
+      "firstOption": "Só a primeira opção",
+      "allOptions": "Alternar todas as opções",
+      "other": "Outros",
+      "empty": "Adicione alimentos da base de dados ao plano para gerar a lista de compras.",
+      "hint": "Conta os alimentos adicionados a partir da base de dados. As linhas de texto livre não são incluídas. As quantidades são arredondadas por excesso.",
+      "copy": "Copiar",
+      "copied": "Copiado — cole no WhatsApp ou num email",
+      "print": "Imprimir",
+      "textTitle": "Lista de compras — {count, plural, one {# dia} other {# dias}}",
+      "portions": "{count, plural, one {porção} other {porções}}"
+    },
+    "hideFoodItems": "Imprimir só o meu texto",
+    "hideFoodItemsHint": "Não incluir a lista de alimentos da base de dados no PDF deste plano."
   },
   "recommendations": {
     "title": "Recomendações reutilizáveis",

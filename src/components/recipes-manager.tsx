@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ChefHat, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/misc";
 import { Link } from "@/i18n/routing";
 import { useServerAction } from "@/hooks/use-server-action";
 import { deleteRecipeAction, saveRecipeAction } from "@/app/actions";
+import { builtInFoods } from "@/lib/nutrition/foods";
 import { recipeTotals, roundTotals, type Totals } from "@/lib/nutrition/items";
 import type { DbFood, Recipe, RecipeItem } from "@/lib/types";
 import { newId } from "@/lib/utils";
@@ -28,24 +29,19 @@ export function RecipesManager({ recipes, foods }: { recipes: Recipe[]; foods: D
   const { confirm } = useFeedback();
   const { run, pending } = useServerAction();
   const [editing, setEditing] = useState<Draft | null>(null);
-  const active = foods.filter((f) => !f.archived);
+  // The built-in table, minus foods the account already has under the same name.
+  const library = useMemo(() => {
+    const own = new Set(foods.filter((f) => !f.archived).map((f) => f.name));
+    return builtInFoods().filter((f) => !own.has(f.name)) as unknown as DbFood[];
+  }, [foods]);
 
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <Button onClick={() => setEditing({ name: "", servings: 1, preparation: "", items: [] })} disabled={!active.length}>
+        <Button onClick={() => setEditing({ name: "", servings: 1, preparation: "", items: [] })}>
           <Plus /> {t("addRecipe")}
         </Button>
       </div>
-
-      {!active.length && (
-        <p className="mb-4 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-          {t("noFoodsYet")}{" "}
-          <Link href="/foods" className="font-medium text-brand-600 hover:underline">
-            {t("goToFoods")}
-          </Link>
-        </p>
-      )}
 
       {recipes.length === 0 ? (
         <EmptyState icon={<ChefHat />} title={t("noRecipes")} description={t("noRecipesHint")} />
@@ -108,6 +104,7 @@ export function RecipesManager({ recipes, foods }: { recipes: Recipe[]; foods: D
           draft={editing}
           setDraft={setEditing}
           foods={foods}
+          library={library}
           pending={pending}
           onClose={() => setEditing(null)}
           onSave={() =>
@@ -133,6 +130,7 @@ function RecipeDialog({
   draft,
   setDraft,
   foods,
+  library,
   onSave,
   onClose,
   pending,
@@ -140,6 +138,8 @@ function RecipeDialog({
   draft: Draft;
   setDraft: (d: Draft) => void;
   foods: DbFood[];
+  /** Built-in foods; copied into the account's foods when the recipe is saved. */
+  library: DbFood[];
   onSave: () => void;
   onClose: () => void;
   pending: boolean;
@@ -148,7 +148,9 @@ function RecipeDialog({
   const tc = useTranslations("common");
   const active = foods.filter((f) => !f.archived);
   const preview: Recipe = { id: "preview", nutritionistId: "", name: draft.name, servings: draft.servings || 1, items: draft.items, createdAt: "" };
-  const { total, perPortion } = recipeTotals(preview, foods);
+  const all = useMemo(() => [...foods, ...library], [foods, library]);
+  const { total, perPortion } = recipeTotals(preview, all);
+  const first = active[0] ?? library[0];
   const setItem = (id: string, patch: Partial<RecipeItem>) =>
     setDraft({ ...draft, items: draft.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
 
@@ -174,23 +176,34 @@ function RecipeDialog({
           <Label>{t("ingredients")}</Label>
           {draft.items.length === 0 && <p className="text-sm text-muted-foreground">{t("noIngredients")}</p>}
           {draft.items.map((it) => {
-            const food = foods.find((f) => f.id === it.foodId);
+            const food = all.find((f) => f.id === it.foodId);
             const options = food?.archived ? [food, ...active] : active;
             return (
               <div key={it.id} className="flex items-center gap-2">
                 <Select
                   value={it.foodId}
-                  onChange={(e) => setItem(it.id, { foodId: e.target.value, name: foods.find((x) => x.id === e.target.value)?.name ?? "" })}
+                  onChange={(e) => setItem(it.id, { foodId: e.target.value, name: all.find((x) => x.id === e.target.value)?.name ?? "" })}
                   className="min-w-0 flex-1"
                   aria-label={t("selectFood")}
                 >
                   {!food && <option value={it.foodId}>{it.name || "—"}</option>}
-                  {options.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                      {f.archived ? ` (${t("archived")})` : ""}
-                    </option>
-                  ))}
+                  {options.length > 0 && (
+                    <optgroup label={t("myFoods")}>
+                      {options.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                          {f.archived ? ` (${t("archived")})` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label={t("builtInFoods")}>
+                    {library.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 </Select>
                 <NumberInput value={it.qty} onValueChange={(v) => setItem(it.id, { qty: v ?? 0 })} min={0} className="w-20 text-right" aria-label={t("qty")} />
                 <span className="w-7 text-xs text-muted-foreground">{food?.baseUnit ?? "g"}</span>
@@ -208,8 +221,8 @@ function RecipeDialog({
           <Button
             variant="ghost"
             size="sm"
-            disabled={!active.length}
-            onClick={() => setDraft({ ...draft, items: [...draft.items, { id: newId("ri"), foodId: active[0].id, name: active[0].name, qty: 100 }] })}
+            disabled={!first}
+            onClick={() => setDraft({ ...draft, items: [...draft.items, { id: newId("ri"), foodId: first.id, name: first.name, qty: first.refQty || 100 }] })}
           >
             <Plus /> {t("addIngredient")}
           </Button>

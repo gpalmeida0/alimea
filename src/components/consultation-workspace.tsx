@@ -38,6 +38,7 @@ import {
   suggestGebFormula,
 } from "@/lib/nutrition/energy";
 import {
+  bodyFatOf,
   computeBmi,
   DEFAULT_MACRO_CONFIG,
   heightCmOf,
@@ -136,11 +137,11 @@ export function ConsultationWorkspace({ clientId, initialClient, consultation, p
     skinfolds: meas.skinfolds,
     perimeters: meas.perimeters,
   };
-  const fat = bodyFatPercent(bodyInput, { athlete: client.anamnesis.isAthlete });
+  const fat = bodyFatPercent(bodyInput);
   const muscle = muscleMassKg(bodyInput);
 
   // --- derived: energy -------------------------------------------------------------
-  const fatPct = meas.bodyFatPct ?? fat.average;
+  const fatPct = bodyFatOf(meas) ?? fat.average;
   const ffm =
     meas.leanMassKg ?? (meas.weightKg && fatPct != null ? r1(meas.weightKg * (1 - fatPct / 100)) : undefined);
   const energyInput = { sex: client.sex, weightKg: meas.weightKg, heightCm, ageYears: age, fatFreeMassKg: ffm };
@@ -202,7 +203,6 @@ export function ConsultationWorkspace({ clientId, initialClient, consultation, p
           meas={meas}
           sex={client.sex}
           bmi={bmi}
-          athlete={!!client.anamnesis.isAthlete}
           missing={[!client.sex && t("sex"), age == null && t("birthDate"), !meas.weightKg && t("weightKg"), !heightCm && t("heightCm")].filter(Boolean) as string[]}
           onApply={(p) => setMeas((m) => ({ ...m, ...p }))}
         />
@@ -502,9 +502,8 @@ function AntropometriaTab({
         <CardHeader>
           <CardTitle className="text-lg">{t("bioimpedance")}</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {num(tc("bodyFat"), meas.bodyFatPct, prev?.bodyFatPct, (v) => setMeas((m) => ({ ...m, bodyFatPct: v })))}
-          {num(tc("muscleMass"), meas.muscleMassKg, prev?.muscleMassKg, (v) => setMeas((m) => ({ ...m, muscleMassKg: v })))}
           {num(t("leanMass"), meas.leanMassKg, prev?.leanMassKg, (v) => setMeas((m) => ({ ...m, leanMassKg: v })))}
           {num(t("waterPct"), meas.waterPct, prev?.waterPct, (v) => setMeas((m) => ({ ...m, waterPct: v })))}
           {num(t("visceralFat"), meas.visceralFat, prev?.visceralFat, (v) => setMeas((m) => ({ ...m, visceralFat: v })))}
@@ -578,7 +577,6 @@ function ResultadosTab({
   meas,
   sex,
   bmi,
-  athlete,
   missing,
   onApply,
 }: {
@@ -589,7 +587,6 @@ function ResultadosTab({
   meas: Measurements;
   sex?: Sex;
   bmi?: number;
-  athlete: boolean;
   missing: string[];
   onApply: (p: Partial<Measurements>) => void;
 }) {
@@ -597,7 +594,7 @@ function ResultadosTab({
   const hip = meas.perimeters.hip;
   const whr = waist && hip ? Math.round((waist / hip) * 100) / 100 : undefined;
   const whrRisk = whr != null && sex ? whr > (sex === "male" ? 0.9 : 0.85) : undefined;
-  const fatPct = meas.bodyFatPct ?? fat.average;
+  const fatPct = bodyFatOf(meas) ?? fat.average;
   const fatKg = meas.weightKg && fatPct != null ? r1((meas.weightKg * fatPct) / 100) : undefined;
 
   return (
@@ -626,11 +623,10 @@ function ResultadosTab({
           title={t("bodyFatTitle")}
           unit="%"
           data={fat}
-          note={athlete ? t("athleteFormulas") : undefined}
-          current={meas.bodyFatPct}
-          onUse={(v) => onApply({ bodyFatPct: v })}
+          current={meas.results?.bodyFatPct}
+          onUse={(v) => onApply({ results: { ...meas.results, bodyFatPct: v } })}
         />
-        <ResultsCard t={t} locale={locale} title={t("muscleMassTitle")} unit="kg" data={muscle} current={meas.muscleMassKg} onUse={(v) => onApply({ muscleMassKg: v })} />
+        <ResultsCard t={t} locale={locale} title={t("muscleMassTitle")} unit="kg" data={muscle} current={meas.results?.muscleMassKg} onUse={(v) => onApply({ results: { ...meas.results, muscleMassKg: v } })} />
       </div>
     </div>
   );

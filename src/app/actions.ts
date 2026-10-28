@@ -6,6 +6,7 @@ import { redirect } from "@/i18n/routing";
 import * as repo from "@/lib/data/repo";
 import { sendDueReminders, sendReminderNow, type ReminderOutcome } from "@/lib/messaging/reminders";
 import { cloneMeals } from "@/lib/nutrition/items";
+import { BUILT_IN_PREFIX, builtInFood } from "@/lib/nutrition/foods";
 import { normalizeAppearance, type Appearance } from "@/lib/theme";
 import type {
   Anamnesis,
@@ -111,6 +112,7 @@ export async function updateAppearanceAction(_locale: string, appearance: unknow
 // --- Clients -------------------------------------------------------------------
 function clientFields(fd: FormData) {
   const birth = field(fd, "birthDate");
+  const consent = field(fd, "dataConsentAt");
   return {
     name: field(fd, "name"),
     email: field(fd, "email"),
@@ -120,6 +122,12 @@ function clientFields(fd: FormData) {
     profession: field(fd, "profession"),
     goals: field(fd, "goals"),
     notes: field(fd, "notes"),
+    nif: field(fd, "nif")?.replace(/\s/g, ""),
+    healthInsurer: field(fd, "healthInsurer"),
+    insuranceNumber: field(fd, "insuranceNumber"),
+    // Only the full client form carries the checkbox (see ClientFields).
+    nutritionVoucher: fd.has("clientForm") ? fd.get("nutritionVoucher") === "on" : undefined,
+    dataConsentAt: consent === undefined ? undefined : consent && isoDate.safeParse(consent).success ? consent : "",
   };
 }
 
@@ -256,6 +264,7 @@ export type PlanPayload = {
   notes?: string;
   motivationalQuote?: string;
   nextAppointment?: string;
+  hideFoodItems?: boolean;
 };
 
 const mealsSchema = z.array(
@@ -282,6 +291,7 @@ async function persistPlan(planId: string, payload: PlanPayload) {
     notes: payload.notes ?? "",
     motivationalQuote: payload.motivationalQuote ?? "",
     nextAppointment: payload.nextAppointment ?? "",
+    hideFoodItems: payload.hideFoodItems === true,
   });
   if (!plan) throw new Error("Plan not found");
   return plan;
@@ -548,13 +558,26 @@ export async function saveRecipeAction(
 ) {
   const name = data.name.trim();
   if (!name) return;
+  // Ingredients picked from the built-in table are copied into the account's
+  // own foods first, so the recipe always references an editable food.
+  const mine = await repo.listFoods();
+  const items: RecipeItem[] = [];
+  for (const it of data.items.filter((x) => x.foodId)) {
+    let foodId = it.foodId;
+    const builtIn = builtInFood(foodId);
+    if (builtIn) {
+      const existing = mine.find((f) => !f.archived && f.name === builtIn.name);
+      const food = existing ?? (await repo.createFood(builtIn));
+      if (!existing) mine.push(food);
+      foodId = food.id;
+    } else if (foodId.startsWith(BUILT_IN_PREFIX)) continue;
+    items.push({ ...it, foodId, qty: Math.max(0, Number(it.qty) || 0) });
+  }
   const recipe = {
     name,
     servings: Math.max(1, Math.round(Number(data.servings) || 1)),
     preparation: data.preparation?.trim() ?? "",
-    items: data.items
-      .filter((it) => it.foodId)
-      .map((it) => ({ ...it, qty: Math.max(0, Number(it.qty) || 0) })),
+    items,
   };
   if (data.id) await repo.updateRecipe(data.id, recipe);
   else await repo.createRecipe(recipe);

@@ -27,6 +27,7 @@ import {
 import { redirect } from "next/navigation";
 import { newId, todayISO } from "@/lib/utils";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password";
+import { VOUCHER_NOTE } from "@/lib/billing/metrics";
 import type {
   AuthStatus,
   BillingPatch,
@@ -331,9 +332,11 @@ export async function createConsultation(
     consultationId: consult.id,
     clientName: client.name,
     typeName: type?.name ?? "",
-    amount: type?.price ?? 0,
+    // Cheque-nutricionista: the client is not charged.
+    amount: client.nutritionVoucher ? 0 : (type?.price ?? 0),
     date: consult.date,
-    status: "pending",
+    status: client.nutritionVoucher ? "paid" : "pending",
+    notes: client.nutritionVoucher ? VOUCHER_NOTE : undefined,
     source: "auto",
     createdAt: now(),
   });
@@ -468,6 +471,7 @@ export async function createPlan(data: Partial<MealPlan> & { clientId: string })
     language: data.language ?? "pt-PT",
     pdfTemplateId: data.pdfTemplateId ?? "classic",
     meals: clone(data.meals ?? []),
+    hideFoodItems: data.hideFoodItems || undefined,
     supplementation: data.supplementation ?? "",
     notes: data.notes ?? "",
     motivationalQuote: data.motivationalQuote ?? "",

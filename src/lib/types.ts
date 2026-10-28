@@ -55,6 +55,15 @@ export interface Client {
   profession?: string;
   goals?: string;
   notes?: string;
+  /** Tax number (NIF), for receipts. */
+  nif?: string;
+  /** Health insurance: insurer name and policy / member number. */
+  healthInsurer?: string;
+  insuranceNumber?: string;
+  /** Covered by a government "cheque-nutricionista": consultations are not charged. */
+  nutritionVoucher?: boolean;
+  /** Date the client was informed of / consented to the data processing (RGPD). */
+  dataConsentAt?: string;
   /** ANAMNESE — personal questionnaire (BOO-51). */
   anamnesis?: Anamnesis;
   createdAt: string;
@@ -95,6 +104,11 @@ export interface Measurements {
   leanMassKg?: number; // Kg Massa Magra
   waterPct?: number; // % Água Corporal
   visceralFat?: number; // Nível Gordura Visceral
+  /**
+   * The values the nutritionist chose on the Results tab (from the formulas).
+   * These — not the bioimpedance readouts — go on the measurements sheet.
+   */
+  results?: { bodyFatPct?: number; muscleMassKg?: number };
   perimeters: {
     waist?: number;
     arm?: number;
@@ -312,6 +326,8 @@ export interface MealPlan {
   notes?: string;
   motivationalQuote?: string;
   nextAppointment?: string; // free text, e.g. "20 de maio às 14h00"
+  /** Print only the written text of each option, not the list of database foods. */
+  hideFoodItems?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -399,6 +415,11 @@ export function normalizeMeasurements(m: Partial<Measurements> | null | undefine
     skinfolds: { ...(src.skinfolds ?? {}) },
   };
 }
+
+/** Body fat % to report: the chosen result, else the bioimpedance readout. */
+export const bodyFatOf = (m: Partial<Measurements> | undefined) => m?.results?.bodyFatPct ?? m?.bodyFatPct;
+/** Muscle mass (kg) to report: the chosen result, else a legacy recorded value. */
+export const muscleMassOf = (m: Partial<Measurements> | undefined) => m?.results?.muscleMassKg ?? m?.muscleMassKg;
 
 export function computeBmi(m: Partial<Measurements> | undefined): number | undefined {
   const h = heightCmOf(m);

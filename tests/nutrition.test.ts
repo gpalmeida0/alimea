@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { geb, get, suggestGebFormula, isApplicable, GEB_FORMULAS } from "@/lib/nutrition/energy";
-import { bodyFatPercent, muscleMassKg } from "@/lib/nutrition/body-composition";
+import { muscleMassKg } from "@/lib/nutrition/body-composition";
 import { macros, bmi, bmiClass, targetKcal } from "@/lib/nutrition/calc";
 import { cloneMeals, planTotals, recipeTotals, formatItem } from "@/lib/nutrition/items";
 import { computeBmi, heightCmOf, normalizeMeasurements, sumSkinfolds, byNewest } from "@/lib/types";
@@ -38,14 +38,6 @@ test("GET = GEB × PAL × stress; formula suggestion and applicability", () => {
   const fao30 = GEB_FORMULAS.find((f) => f.key === "fao_30_65_women")!;
   assert.equal(isApplicable(fao30, { sex: "female", ageYears: 40 }), true);
   assert.equal(isApplicable(fao30, { sex: "male", ageYears: 40 }), false);
-});
-
-test("body fat: Deurenberg (adult women) and average of available formulas", () => {
-  const r = bodyFatPercent({ sex: "female", ageYears: 30, weightKg: 60, heightCm: 165, skinfolds: {}, perimeters: {} });
-  const deurenberg = r.results.find((x) => x.key === "deurenberg")!;
-  const expected = Math.round((1.2 * (60 / 1.65 ** 2) + 0.23 * 30 - 5.4) * 10) / 10;
-  assert.equal(deurenberg.value, expected);
-  assert.equal(r.average, expected, "only Deurenberg has data → average equals it");
 });
 
 test("Lee weight-based muscle mass uses +1.4 for African-American ethnicity", () => {

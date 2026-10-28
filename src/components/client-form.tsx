@@ -34,6 +34,28 @@ export function ClientFields({ client }: { client?: Partial<Client> }) {
       <Field label={tn("profession")} htmlFor="profession">
         <Input id="profession" name="profession" defaultValue={client?.profession ?? ""} />
       </Field>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field label={t("nif")} htmlFor="nif">
+          <Input id="nif" name="nif" inputMode="numeric" maxLength={20} defaultValue={client?.nif ?? ""} autoComplete="off" />
+        </Field>
+        <Field label={t("healthInsurer")} htmlFor="healthInsurer" hint={t("healthInsurerHint")}>
+          <Input id="healthInsurer" name="healthInsurer" maxLength={120} defaultValue={client?.healthInsurer ?? ""} placeholder="Médis, Multicare…" autoComplete="off" />
+        </Field>
+        <Field label={t("insuranceNumber")} htmlFor="insuranceNumber">
+          <Input id="insuranceNumber" name="insuranceNumber" maxLength={60} defaultValue={client?.insuranceNumber ?? ""} autoComplete="off" />
+        </Field>
+      </div>
+      <input type="hidden" name="clientForm" value="1" />
+      <label className="flex items-start gap-2.5 text-sm">
+        <input type="checkbox" name="nutritionVoucher" defaultChecked={!!client?.nutritionVoucher} className="mt-0.5 size-4 accent-brand" />
+        <span>
+          {t("voucher")}
+          <span className="block text-xs text-muted-foreground">{t("voucherHint")}</span>
+        </span>
+      </label>
+      <Field label={t("dataConsent")} htmlFor="dataConsentAt" hint={t("dataConsentHint")} className="sm:w-64">
+        <Input id="dataConsentAt" name="dataConsentAt" type="date" defaultValue={client?.dataConsentAt ?? ""} max={new Date().toISOString().slice(0, 10)} />
+      </Field>
       <Field label={t("goals")} htmlFor="goals">
         <Textarea id="goals" name="goals" rows={2} defaultValue={client?.goals ?? ""} />
       </Field>

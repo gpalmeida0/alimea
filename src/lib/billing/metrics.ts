@@ -7,6 +7,9 @@
 import type { Appointment, BillingEntry } from "@/lib/types";
 import { dateInZone } from "@/lib/utils";
 
+/** Note written on the €0 entry of a consultation covered by a government voucher. */
+export const VOUCHER_NOTE = "Cheque-nutricionista";
+
 export const PERIODS = ["week", "month", "quarter", "year"] as const;
 export type Period = (typeof PERIODS)[number];
 

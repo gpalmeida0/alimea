@@ -8,7 +8,7 @@ import {
   listConsultationTypes,
   listPlans,
 } from "@/lib/data/repo";
-import { computeBmi } from "@/lib/types";
+import { bodyFatOf, muscleMassOf, computeBmi } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, Badge, EmptyState } from "@/components/ui/misc";
 import { Link } from "@/i18n/routing";
@@ -51,8 +51,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
     date: c.date,
     weight: c.measurements.weightKg,
     bmi: computeBmi(c.measurements),
-    bodyFat: c.measurements.bodyFatPct,
-    muscle: c.measurements.muscleMassKg,
+    bodyFat: bodyFatOf(c.measurements),
+    muscle: muscleMassOf(c.measurements),
     waist: c.measurements.perimeters.waist,
     abdominal: c.measurements.perimeters.abdominal,
     arm: c.measurements.perimeters.arm,
@@ -94,6 +94,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
                   <Mail className="size-3.5" /> {client.email}
                 </a>
               )}
+              {client.nif && <span>NIF {client.nif}</span>}
+              {client.healthInsurer && <span>{[client.healthInsurer, client.insuranceNumber].filter(Boolean).join(" · ")}</span>}
+              {client.nutritionVoucher && <Badge variant="accent">{t("voucherBadge")}</Badge>}
             </div>
           </div>
         </div>
@@ -162,7 +165,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
                         {[
                           m.weightKg != null ? `${formatNumber(m.weightKg, locale)} kg` : null,
                           bmi ? `${tc("bmiShort")} ${formatNumber(bmi, locale)}` : null,
-                          m.bodyFatPct != null ? `${formatNumber(m.bodyFatPct, locale)}% ${tc("fatShort")}` : null,
+                          bodyFatOf(m) != null ? `${formatNumber(bodyFatOf(m), locale)}% ${tc("fatShort")}` : null,
                         ]
                           .filter(Boolean)
                           .join(" · ") || tc("noMeasurements")}
