@@ -19,7 +19,10 @@
       "work": "Dia a dia",
       "library": "Biblioteca clínica",
       "admin": "Consultório"
-    }
+    },
+    "more": "Mais",
+    "agenda": "Agenda",
+    "home": "Início"
   },
   "mets": {
     "title": "Atividades (METs)",

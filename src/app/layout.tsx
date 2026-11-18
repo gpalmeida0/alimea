@@ -18,10 +18,14 @@ export const metadata: Metadata = {
   title: { default: "Alimea", template: "%s · Alimea" },
   description: "Produtividade clínica para nutricionistas",
   robots: { index: false, follow: false },
+  // Added to the home screen, it opens full-screen like an app.
+  appleWebApp: { capable: true, title: "Alimea", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
   themeColor: "#222122",
+  // Lets the layout use the full screen on notched phones (see the safe-area paddings).
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

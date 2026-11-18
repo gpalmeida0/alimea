@@ -52,7 +52,7 @@ export function ProgressDashboard({ points, locale }: { points: ProgressPoint[];
   if (!charted.length) return null;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
       {charted.map((m) => (
         <MetricCard
           key={m.key}
@@ -87,11 +87,11 @@ function MetricCard({
   const flat = delta === 0 || series.length < 2;
 
   return (
-    <div className="card-surface p-4">
-      <div className="flex items-start justify-between">
+    <div className="card-surface p-3 sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-2">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="mt-0.5 font-serif text-2xl font-semibold">
+          <p className="truncate text-[11px] uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</p>
+          <p className="mt-0.5 font-serif text-xl font-semibold sm:text-2xl">
             {formatNumber(last, locale)}
             <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>
           </p>
