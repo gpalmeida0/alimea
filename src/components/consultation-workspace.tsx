@@ -33,6 +33,7 @@ import {
   GEB_FORMULAS,
   PAL_OPTIONS,
   geb as computeGeb,
+  gebExact,
   get as computeGet,
   isApplicable,
   suggestGebFormula,
@@ -149,8 +150,9 @@ export function ConsultationWorkspace({ clientId, initialClient, consultation, p
   const gebKey = consult.energy.gebFormula ?? suggestedKey;
   const gebValue = computeGeb(gebKey, energyInput);
   const pal = consult.energy.pal ?? DEFAULT_PAL;
-  const getValue = computeGet(gebValue, pal, consult.energy.stressFactor ?? 1);
-  const targetKcal = consult.energy.targetKcal ?? getValue;
+  const getValue = computeGet(gebExact(gebKey, energyInput), pal, consult.energy.stressFactor ?? 1, consult.energy.tef);
+  const targetKcal =
+    consult.energy.targetKcal ?? (getValue != null ? getValue + (consult.energy.targetOffsetKcal ?? 0) : undefined);
 
   // --- derived: macros -------------------------------------------------------------
   const macroResult = targetKcal ? macroSplit(targetKcal, consult.macros, meas.weightKg) : undefined;
@@ -747,6 +749,7 @@ function NecessidadesTab({
   const others = GEB_FORMULAS.filter((f) => !isApplicable(f, input));
   const label = (key: string, l: string) => `${l}${key === suggestedKey ? ` — ${t("suggested")}` : ""}`;
   const needsFfm = gebKey ? FFM_FORMULAS.has(gebKey) : false;
+  const [customPal, setCustomPal] = useState(() => !PAL_OPTIONS.some((p) => p.value === pal));
   const goals: Goal[] = ["loss", "maintain", "gain"];
 
   const inputs = [
@@ -805,13 +808,34 @@ function NecessidadesTab({
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
             <Field label={t("pal")} htmlFor="pal">
-              <Select id="pal" value={pal} onChange={(e) => setEnergy({ ...energy, pal: Number(e.target.value) })}>
+              <Select
+                id="pal"
+                value={customPal ? "custom" : pal}
+                onChange={(e) => {
+                  if (e.target.value === "custom") return setCustomPal(true);
+                  setCustomPal(false);
+                  setEnergy({ ...energy, pal: Number(e.target.value) });
+                }}
+              >
                 {PAL_OPTIONS.map((p) => (
                   <option key={p.value} value={p.value}>
                     {t(`palOptions.${p.labelKey.split(".")[1]}`)}
                   </option>
                 ))}
+                <option value="custom">{t("palCustom")}</option>
               </Select>
+              {customPal && (
+                <NumberInput
+                  value={energy.pal}
+                  onValueChange={(v) => setEnergy({ ...energy, pal: v })}
+                  placeholder="1,35"
+                  min={1}
+                  max={3}
+                  className="mt-1.5"
+                  aria-label={t("palCustomLabel")}
+                  autoFocus
+                />
+              )}
             </Field>
             <Field label={t("stressFactor")} htmlFor="stress">
               <NumberInput
@@ -824,7 +848,28 @@ function NecessidadesTab({
               />
             </Field>
           </div>
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-brand"
+              checked={!!energy.tef}
+              onChange={(e) => setEnergy({ ...energy, tef: e.target.checked || undefined })}
+            />
+            <span>
+              {t("tef")}
+              <span className="block text-xs text-muted-foreground">{t("tefHint")}</span>
+            </span>
+          </label>
           <ReadOnly label={t("getKcal")} value={getValue} locale={locale} highlight />
+          <Field label={t("targetOffset")} htmlFor="target-offset" hint={t("targetOffsetHint")}>
+            <NumberInput
+              id="target-offset"
+              value={energy.targetOffsetKcal}
+              onValueChange={(v) => setEnergy({ ...energy, targetOffsetKcal: v })}
+              placeholder="0"
+              className="w-32"
+            />
+          </Field>
           <div className="space-y-1.5">
             <Label htmlFor="target">{t("planTarget")}</Label>
             <div className="flex flex-wrap gap-2">
@@ -832,7 +877,7 @@ function NecessidadesTab({
                 id="target"
                 value={energy.targetKcal}
                 onValueChange={(v) => setEnergy({ ...energy, targetKcal: v })}
-                placeholder={getValue ? String(getValue) : ""}
+                placeholder={getValue ? String(getValue + (energy.targetOffsetKcal ?? 0)) : ""}
                 className="w-32"
               />
               {goals.map((g) => (

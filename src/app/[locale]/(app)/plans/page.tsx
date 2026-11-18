@@ -14,6 +14,7 @@ export default async function PlansPage({ params }: { params: Promise<{ locale: 
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("plans");
+  const tp = await getTranslations("plan");
   const [plans, clients] = await Promise.all([listPlans(), clientMap()]);
 
   return (
@@ -39,6 +40,7 @@ export default async function PlansPage({ params }: { params: Promise<{ locale: 
                   <p>{t("updated", { date: formatDate(p.updatedAt, locale) })}</p>
                   <p>{p.consultationId ? t("fromConsultation") : t("standalone")}</p>
                 </div>
+                <Badge variant={p.status === "draft" ? "accent" : "default"}>{tp(`status.${p.status ?? "done"}`)}</Badge>
                 <Badge variant="muted">{p.language === "en" ? "EN" : "PT"}</Badge>
               </Link>
             );

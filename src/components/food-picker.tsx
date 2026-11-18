@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ChefHat, Database, Search, X } from "lucide-react";
 import { searchFoods } from "@/lib/nutrition/foods";
-import { dbFoodToItem, foodToItem, recipeToItem } from "@/lib/nutrition/items";
+import { dbFoodToItem, foodToItem, portionWeight, recipeToItem } from "@/lib/nutrition/items";
 import type { DbFood, FoodItem, Recipe } from "@/lib/types";
 import { cn, normalizeSearch } from "@/lib/utils";
 
@@ -113,7 +113,7 @@ export function FoodPicker({
                   : {
                       key: `s-${i}-${row.food.name}`,
                       name: row.food.name,
-                      sub: `${row.food.group}${row.food.qtyG ? ` · ${row.food.qtyG}g` : ""}`,
+                      sub: [row.food.group, row.food.portion, portionWeight(row.food.qtyG, row.food.group) ? `${row.food.qtyG} g` : ""].filter(Boolean).join(" · "),
                       kcal: row.food.kcal ?? undefined,
                       icon: null,
                     };

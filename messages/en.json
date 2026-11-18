@@ -58,7 +58,7 @@
     "brand": "Brand",
     "category": "Category",
     "baseUnit": "Base unit",
-    "refQty": "Reference quantity",
+    "refQty": "1 portion =",
     "perRef": "per {qty}{unit}",
     "kcal": "Kcal",
     "protein": "Protein (g)",
@@ -266,7 +266,17 @@
     "noIngredients": "No ingredients yet.",
     "servingsCount": "{n, plural, =1 {1 serving} other {# servings}}",
     "ingredientsCount": "{n, plural, =1 {1 ingredient} other {# ingredients}}",
-    "deleteRecipeTitle": "Delete recipe “{name}”?"
+    "deleteRecipeTitle": "Delete recipe “{name}”?",
+    "palCustom": "Other value…",
+    "palCustomLabel": "Custom PAL",
+    "tef": "Add thermic effect of food (+10% on TDEE)",
+    "tefHint": "TDEE × 1.10 (TDEE + TDEE × 0.10).",
+    "targetOffset": "Adjustment to TDEE (kcal)",
+    "targetOffsetHint": "E.g. −200. Target = TDEE + adjustment.",
+    "portions": "Portions",
+    "searchIngredient": "Search food (e.g. banana)…",
+    "ingredientPortionsHint": "Quantity in portions (1 = one table portion, 0.5 = half).",
+    "changeIngredient": "Change food"
   },
   "auth": {
     "login": "Sign in",
@@ -660,7 +670,12 @@
       "portions": "{count, plural, one {portion} other {portions}}"
     },
     "hideFoodItems": "Print only my text",
-    "hideFoodItemsHint": "Leave the list of database foods out of this plan's PDF."
+    "hideFoodItemsHint": "Leave the list of database foods out of this plan's PDF.",
+    "statusLabel": "Plan status",
+    "status": {
+      "draft": "In progress",
+      "done": "Finished"
+    }
   },
   "recommendations": {
     "title": "Reusable recommendations",

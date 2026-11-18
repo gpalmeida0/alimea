@@ -160,7 +160,11 @@ export interface EnergyConfig {
   pal?: number;
   /** Optional stress factor multiplier. */
   stressFactor?: number;
-  /** Plan calorie target (kcal). Defaults to computed GET. */
+  /** Add the thermic effect of food: GET × 1.10. */
+  tef?: boolean;
+  /** kcal added to GET for the plan target when no manual target is set (e.g. −200). */
+  targetOffsetKcal?: number;
+  /** Plan calorie target (kcal). Defaults to computed GET (+ offset). */
   targetKcal?: number;
 }
 
@@ -239,14 +243,21 @@ export type FoodUnit = "g" | "mL" | "porção";
 export interface FoodItem {
   id: string;
   name: string;
-  qtyG: number; // chosen quantity in the item's base unit (grams by default)
-  /** Display unit (defaults to grams). Recipes use "porção". */
+  /**
+   * Chosen quantity in `unit`. For "porção" items (foods and recipes) it is a
+   * number of portions (1, 1.5, 0.5…); older food items store grams/mL.
+   */
+  qtyG: number;
+  /** Display unit (defaults to grams). Foods and recipes added now use "porção". */
   unit?: FoodUnit;
+  /** Grams (or mL) in one portion of a food, when meaningful — for display and the shopping list. */
+  portionG?: number;
+  portionUnit?: "g" | "mL";
   /** Whether this references a database food or a recipe. */
   kind?: "food" | "recipe";
   /** Source id in the foods / recipes database, when applicable. */
   refId?: string;
-  /** Per-unit nutrition (so totals recompute when qty changes). */
+  /** Nutrition per 1 `unit` — per portion for "porção" items (so totals recompute when qty changes). */
   perG: { kcal: number; protein: number; carbs: number; fat: number };
 }
 
@@ -328,9 +339,13 @@ export interface MealPlan {
   nextAppointment?: string; // free text, e.g. "20 de maio às 14h00"
   /** Print only the written text of each option, not the list of database foods. */
   hideFoodItems?: boolean;
+  /** "draft" while the plan is still being worked on; "done" once finished. Older plans have none. */
+  status?: PlanStatus;
   createdAt: string;
   updatedAt: string;
 }
+
+export type PlanStatus = "draft" | "done";
 
 /** Reusable multilingual clinical text block. */
 export interface Recommendation {

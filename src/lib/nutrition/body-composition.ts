@@ -60,9 +60,9 @@ const raceNum = (e?: Ethnicity) => (e === "black" ? 1 : 0);
 function adultFat(i: BodyCompInput): FormulaResult[] {
   const s = i.skinfolds;
 
-  // Evans et al — %BF = 8.9976 + 0.24658·Σ(abd+crural+tri) − 6.343·sex − 1.998·race
+  // Evans et al — %BF = 8.997 + 0.24658·Σ(abd+crural+tri) − 6.343·sex − 1.998·race
   const evans = pos(s.abdominal, s.crural, s.tricipital)
-    ? r1(8.9976 + 0.24658 * (s.abdominal! + s.crural! + s.tricipital!) - 6.343 * sexNum(i.sex) - 1.998 * raceNum(i.ethnicity))
+    ? r1(8.997 + 0.24658 * (s.abdominal! + s.crural! + s.tricipital!) - 6.343 * sexNum(i.sex) - 1.998 * raceNum(i.ethnicity))
     : undefined;
 
   // Withers et al — BD = 1.0988 − 0.0004·Σ7 → Siri 4.95

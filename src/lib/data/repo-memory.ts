@@ -472,6 +472,7 @@ export async function createPlan(data: Partial<MealPlan> & { clientId: string })
     pdfTemplateId: data.pdfTemplateId ?? "classic",
     meals: clone(data.meals ?? []),
     hideFoodItems: data.hideFoodItems || undefined,
+    status: data.status,
     supplementation: data.supplementation ?? "",
     notes: data.notes ?? "",
     motivationalQuote: data.motivationalQuote ?? "",

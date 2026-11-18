@@ -58,7 +58,7 @@
     "brand": "Marca",
     "category": "Categoria",
     "baseUnit": "Unidade base",
-    "refQty": "Quantidade de referência",
+    "refQty": "1 porção =",
     "perRef": "por {qty}{unit}",
     "kcal": "Kcal",
     "protein": "Proteína (g)",
@@ -266,7 +266,17 @@
     "noIngredients": "Ainda sem ingredientes.",
     "servingsCount": "{n, plural, =1 {1 porção} other {# porções}}",
     "ingredientsCount": "{n, plural, =1 {1 ingrediente} other {# ingredientes}}",
-    "deleteRecipeTitle": "Eliminar a receita “{name}”?"
+    "deleteRecipeTitle": "Eliminar a receita “{name}”?",
+    "palCustom": "Outro valor…",
+    "palCustomLabel": "PAL personalizado",
+    "tef": "Somar efeito térmico dos alimentos (+10% ao GET)",
+    "tefHint": "GET × 1,10 (GET + GET × 0,10).",
+    "targetOffset": "Ajuste ao GET (kcal)",
+    "targetOffsetHint": "Ex.: −200. O objetivo fica GET + ajuste.",
+    "portions": "Porções",
+    "searchIngredient": "Procurar alimento (ex.: banana)…",
+    "ingredientPortionsHint": "Quantidade em porções (1 = 1 porção da tabela, 0,5 = meia porção).",
+    "changeIngredient": "Trocar alimento"
   },
   "auth": {
     "login": "Entrar",
@@ -660,7 +670,12 @@
       "portions": "{count, plural, one {porção} other {porções}}"
     },
     "hideFoodItems": "Imprimir só o meu texto",
-    "hideFoodItemsHint": "Não incluir a lista de alimentos da base de dados no PDF deste plano."
+    "hideFoodItemsHint": "Não incluir a lista de alimentos da base de dados no PDF deste plano.",
+    "statusLabel": "Estado do plano",
+    "status": {
+      "draft": "Em curso",
+      "done": "Concluído"
+    }
   },
   "recommendations": {
     "title": "Recomendações reutilizáveis",

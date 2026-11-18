@@ -6,6 +6,7 @@
 import type { DbFood, FoodUnit, Meal, Recipe } from "@/lib/types";
 import { normalizeSearch } from "@/lib/utils";
 import type { Food } from "./foods";
+import { itemWeight } from "./items";
 
 export interface ShoppingLine {
   name: string;
@@ -68,7 +69,10 @@ export function shoppingList(meals: Meal[], { days, scope, dbFoods = [], recipes
           continue;
         }
         const group = foodsById.get(item.refId ?? "")?.category ?? staticGroups.get(normalizeSearch(item.name));
-        add(item.name, item.unit ?? "g", item.qtyG * times, group);
+        // Portion foods are bought by weight when the portion's weight is known.
+        const weight = itemWeight(item);
+        if (weight) add(item.name, weight.unit, weight.qty * times, group);
+        else add(item.name, item.unit ?? "g", item.qtyG * times, group);
       }
     }
   }

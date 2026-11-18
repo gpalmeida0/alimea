@@ -1,21 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ChefHat, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ChefHat, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { useFeedback } from "@/components/ui/feedback";
-import { Field, Input, Label, NumberInput, Select, Textarea } from "@/components/ui/input";
+import { Field, Input, Label, NumberInput, Textarea } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/misc";
 import { Link } from "@/i18n/routing";
 import { useServerAction } from "@/hooks/use-server-action";
 import { deleteRecipeAction, saveRecipeAction } from "@/app/actions";
 import { builtInFoods } from "@/lib/nutrition/foods";
-import { recipeTotals, roundTotals, type Totals } from "@/lib/nutrition/items";
+import { portionWeight, recipeTotals, roundTotals, type Totals } from "@/lib/nutrition/items";
 import type { DbFood, Recipe, RecipeItem } from "@/lib/types";
-import { newId } from "@/lib/utils";
+import { newId, normalizeSearch } from "@/lib/utils";
 
 type Draft = { id?: string; name: string; servings?: number; preparation: string; items: RecipeItem[] };
 
@@ -150,7 +150,6 @@ function RecipeDialog({
   const preview: Recipe = { id: "preview", nutritionistId: "", name: draft.name, servings: draft.servings || 1, items: draft.items, createdAt: "" };
   const all = useMemo(() => [...foods, ...library], [foods, library]);
   const { total, perPortion } = recipeTotals(preview, all);
-  const first = active[0] ?? library[0];
   const setItem = (id: string, patch: Partial<RecipeItem>) =>
     setDraft({ ...draft, items: draft.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
 
@@ -177,36 +176,26 @@ function RecipeDialog({
           {draft.items.length === 0 && <p className="text-sm text-muted-foreground">{t("noIngredients")}</p>}
           {draft.items.map((it) => {
             const food = all.find((f) => f.id === it.foodId);
-            const options = food?.archived ? [food, ...active] : active;
+            const base = food && food.refQty > 0 ? food.refQty : 100;
+            const grams = food ? portionWeight(food.refQty, food.category) : undefined;
+            const portions = Math.round(((it.qty || 0) / base) * 100) / 100;
             return (
               <div key={it.id} className="flex items-center gap-2">
-                <Select
-                  value={it.foodId}
-                  onChange={(e) => setItem(it.id, { foodId: e.target.value, name: all.find((x) => x.id === e.target.value)?.name ?? "" })}
-                  className="min-w-0 flex-1"
-                  aria-label={t("selectFood")}
-                >
-                  {!food && <option value={it.foodId}>{it.name || "—"}</option>}
-                  {options.length > 0 && (
-                    <optgroup label={t("myFoods")}>
-                      {options.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                          {f.archived ? ` (${t("archived")})` : ""}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  <optgroup label={t("builtInFoods")}>
-                    {library.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </Select>
-                <NumberInput value={it.qty} onValueChange={(v) => setItem(it.id, { qty: v ?? 0 })} min={0} className="w-20 text-right" aria-label={t("qty")} />
-                <span className="w-7 text-xs text-muted-foreground">{food?.baseUnit ?? "g"}</span>
+                <span className="min-w-0 flex-1 truncate text-sm" title={it.name}>
+                  {food?.name ?? it.name ?? "—"}
+                  {food?.archived ? <span className="text-muted-foreground"> ({t("archived")})</span> : null}
+                </span>
+                <NumberInput
+                  value={portions}
+                  onValueChange={(v) => setItem(it.id, { qty: (v ?? 0) * base })}
+                  min={0}
+                  className="w-16 text-right"
+                  aria-label={`${it.name} — ${t("portions")}`}
+                />
+                <span className="w-10 text-xs text-muted-foreground">{t("porcao")}</span>
+                <span className="hidden w-14 text-right text-xs lining-nums tabular-nums text-muted-foreground sm:inline">
+                  {grams ? `${Math.round(portions * grams)} ${food?.baseUnit ?? "g"}` : ""}
+                </span>
                 <button
                   type="button"
                   onClick={() => setDraft({ ...draft, items: draft.items.filter((x) => x.id !== it.id) })}
@@ -218,14 +207,12 @@ function RecipeDialog({
               </div>
             );
           })}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={!first}
-            onClick={() => setDraft({ ...draft, items: [...draft.items, { id: newId("ri"), foodId: first.id, name: first.name, qty: first.refQty || 100 }] })}
-          >
-            <Plus /> {t("addIngredient")}
-          </Button>
+          <IngredientSearch
+            foods={active}
+            library={library}
+            onPick={(f) => setDraft({ ...draft, items: [...draft.items, { id: newId("ri"), foodId: f.id, name: f.name, qty: f.refQty > 0 ? f.refQty : 100 }] })}
+          />
+          <p className="text-[11px] text-muted-foreground">{t("ingredientPortionsHint")}</p>
         </div>
 
         <div className="grid gap-2 rounded-lg bg-muted/60 p-3 text-xs sm:grid-cols-2">
@@ -253,5 +240,88 @@ function RecipeDialog({
         </DialogFooter>
       </form>
     </Dialog>
+  );
+}
+
+/** Type-to-search over the account's foods and the built-in table (↑↓ + Enter to add). */
+function IngredientSearch({ foods, library, onPick }: { foods: DbFood[]; library: DbFood[]; onPick: (f: DbFood) => void }) {
+  const t = useTranslations("nutrition");
+  const tf = useTranslations("foods");
+  const [q, setQ] = useState("");
+  const [active, setActive] = useState(0);
+  const listId = useId();
+  const results = useMemo(() => {
+    const nq = normalizeSearch(q.trim());
+    if (!nq) return [];
+    const match = (f: DbFood) => normalizeSearch(`${f.name} ${f.brand ?? ""}`).includes(nq);
+    return [...foods.filter(match).map((f) => ({ f, own: true })), ...library.filter(match).map((f) => ({ f, own: false }))].slice(0, 40);
+  }, [q, foods, library]);
+
+  const pick = (f: DbFood | undefined) => {
+    if (!f) return;
+    onPick(f);
+    setQ("");
+    setActive(0);
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex items-center gap-2 rounded-md border border-input bg-background px-2.5">
+        <Search className="size-4 text-muted-foreground" />
+        <input
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setActive(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setActive((i) => Math.min(i + 1, results.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((i) => Math.max(i - 1, 0));
+            } else if (e.key === "Enter") {
+              e.preventDefault(); // never submit the recipe form from here
+              pick(results[active]?.f);
+            } else if (e.key === "Escape" && q) {
+              e.preventDefault();
+              e.stopPropagation();
+              setQ("");
+            }
+          }}
+          placeholder={t("searchIngredient")}
+          aria-label={t("addIngredient")}
+          role="combobox"
+          aria-controls={listId}
+          aria-expanded={results.length > 0}
+          className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+      {q.trim() && (
+        <div id={listId} role="listbox" className="absolute inset-x-0 top-full z-10 mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-card p-1 shadow-lg scroll-thin">
+          {results.length === 0 && <p className="px-3 py-3 text-center text-sm text-muted-foreground">{tf("noResults")}</p>}
+          {results.map(({ f, own }, i) => (
+            <button
+              type="button"
+              key={f.id}
+              role="option"
+              aria-selected={i === active}
+              onMouseMove={() => setActive(i)}
+              onClick={() => pick(f)}
+              className={`flex w-full items-center justify-between gap-3 rounded px-2.5 py-1.5 text-left text-sm ${i === active ? "bg-brand-50" : ""}`}
+            >
+              <span className="min-w-0">
+                <span className="block truncate">{f.name}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {[own ? t("myFoods") : f.category, portionWeight(f.refQty, f.category) ? `${f.refQty} ${f.baseUnit}` : ""].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <span className="shrink-0 text-xs font-medium lining-nums tabular-nums text-brand-600">{Math.round(f.kcal)} kcal</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

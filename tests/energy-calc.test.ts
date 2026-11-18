@@ -101,3 +101,14 @@ test("measurement helpers tolerate missing and legacy data", () => {
   const rows = [{ date: "2026-01-01" }, { date: "2026-02-01", createdAt: "b" }, { date: "2026-02-01", createdAt: "c" }, { date: "2026-02-01" }];
   assert.deepEqual([...rows].sort(byNewest).map((r) => r.createdAt ?? r.date), ["c", "b", "2026-02-01", "2026-01-01"]);
 });
+
+test("GET: rounded once from the unrounded GEB, with the optional +10% thermic effect (Excel 'Plano Alimentar')", async () => {
+  const { gebExact, get } = await import("@/lib/nutrition/energy");
+  // 26-year-old woman, 51,3 kg, 161 cm, Harris-Benedict, PAL 1,35, GET + GET × 0,10, objective GET − 200.
+  const g = gebExact("harris_benedict_women", { sex: "female", weightKg: 51.3, heightCm: 161, ageYears: 26 })!;
+  assert.equal(Math.round(g * 1000) / 1000, 1321.918);
+  assert.equal(get(g, 1.35), 1785);
+  assert.equal(get(g, 1.35, 1, true), 1963);
+  assert.equal(get(g, 1.35, 1, true)! - 200, 1763);
+  assert.equal(get(undefined, 1.35, 1, true), undefined);
+});

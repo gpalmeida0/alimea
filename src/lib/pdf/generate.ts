@@ -295,7 +295,7 @@ function drawMeals(ctx: Ctx) {
     options.forEach((opt, i) => {
       const x = multi ? contentX : MARGIN + 8;
       const maxW = PAGE_W - MARGIN - x;
-      const itemLines = itemsOf(opt).map((it: FoodItem) => `• ${formatItem(it, L.portion)}`);
+      const itemLines = itemsOf(opt).map((it: FoodItem) => `• ${formatItem(it, L.portion, ctx.lang === "en" ? "." : ",")}`);
       const text = [opt.content.trim(), ...itemLines].filter(Boolean).join("\n");
       const lines = wrapLines(f.body, text, SIZE, maxW);
 
