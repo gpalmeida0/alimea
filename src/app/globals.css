@@ -39,6 +39,16 @@
     @apply border-border;
   }
 
+  /* Grid items default to min-width: auto, so one long unbreakable line (a
+     truncated name, a table) would stretch the whole page sideways on phones. */
+  .grid > * {
+    min-width: 0;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

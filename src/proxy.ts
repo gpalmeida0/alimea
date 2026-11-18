@@ -90,6 +90,6 @@ export default async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Everything except API routes, Next internals and static files.
-  matcher: ["/((?!api|_next|_vercel|.*\\..*).*)"],
+  // Everything except API routes, Next internals, the home-screen icon and static files.
+  matcher: ["/((?!api|_next|_vercel|apple-icon|.*\\..*).*)"],
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   Bell,
@@ -79,6 +79,20 @@ const sameDay = (a: Date, b: Date) =>
 /** "YYYY-MM-DDT09:00" for a given local day — default time when booking from the grid. */
 const dayAt = (d: Date, hour = 9) => toLocalInput(new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour).toISOString());
 
+const PHONE = "(max-width: 640px)";
+/** True on phone-sized screens; false during server rendering. */
+function useIsPhone(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(PHONE);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(PHONE).matches,
+    () => false,
+  );
+}
+
 export function AppointmentsView(props: Props) {
   const t = useTranslations("appointments");
   const tr = useTranslations("reminders");
@@ -87,17 +101,18 @@ export function AppointmentsView(props: Props) {
   const { run, pending } = useServerAction();
   const now = useMemo(() => new Date(props.nowISO), [props.nowISO]);
 
-  const [view, setView] = useState<"month" | "agenda">("month");
   const [cursor, setCursor] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ clientId?: string; date?: string } | null>(
     props.preselectClientId ? { clientId: props.preselectClientId } : null,
   );
 
-  // Use the agenda on phones by default.
-  useEffect(() => {
-    if (window.matchMedia("(max-width: 640px)").matches) setView("agenda");
-  }, []);
+  // Phones get the agenda list (the month grid is too small to read there)
+  // until the person picks a view themselves.
+  const phone = useIsPhone();
+  const [chosenView, setChosenView] = useState<"month" | "agenda" | null>(null);
+  const view = chosenView ?? (phone ? "agenda" : "month");
+  const chooseView = setChosenView;
 
   // Always read the selected appointment from fresh props (never a stale copy).
   const selected = props.appointments.find((a) => a.id === selectedId) ?? null;
@@ -158,7 +173,7 @@ export function AppointmentsView(props: Props) {
           <div className="flex items-center gap-2">
             <Segmented
               value={view}
-              onChange={setView}
+              onChange={chooseView}
               size="sm"
               items={[
                 { value: "month", label: t("viewMonth"), icon: <CalendarDays /> },
@@ -237,7 +252,7 @@ export function AppointmentsView(props: Props) {
                           </button>
                         ))}
                         {list.length > 3 && (
-                          <button type="button" onClick={() => setView("agenda")} className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+                          <button type="button" onClick={() => chooseView("agenda")} className="px-1.5 text-[11px] text-muted-foreground hover:text-foreground">
                             +{list.length - 3}
                           </button>
                         )}

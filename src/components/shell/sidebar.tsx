@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
-import { Menu, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Link, usePathname } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
@@ -95,6 +96,14 @@ export function Sidebar({ user }: { user: ShellUser }) {
   );
 }
 
+/** Opens the phone menu from anywhere (the bottom bar's "More" button). */
+export const OPEN_MENU_EVENT = "alimea:open-menu";
+export const openMobileMenu = () => window.dispatchEvent(new Event(OPEN_MENU_EVENT));
+
+/**
+ * Full navigation as a drawer on phones. Portalled to <body>: inside the
+ * blurred, sticky top bar a fixed element would be clipped to the bar.
+ */
 export function MobileNav({ user }: { user: ShellUser }) {
   const t = useTranslations("common");
   const pathname = usePathname();
@@ -102,39 +111,42 @@ export function MobileNav({ user }: { user: ShellUser }) {
 
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener(OPEN_MENU_EVENT, show);
+    return () => window.removeEventListener(OPEN_MENU_EVENT, show);
+  }, []);
+  useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
   }, [open]);
 
-  return (
-    <div className="md:hidden">
-      <button
-        onClick={() => setOpen(true)}
-        className="flex size-9 items-center justify-center rounded-md border border-border bg-card text-foreground"
+  if (!open) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-foreground/40 animate-in fade-in-0 md:hidden" onClick={() => setOpen(false)}>
+      <div
+        role="dialog"
+        aria-modal="true"
         aria-label={t("menu")}
-        aria-expanded={open}
+        className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl animate-in slide-in-from-left"
+        onClick={(e) => e.stopPropagation()}
       >
-        <Menu className="size-5" />
-      </button>
-      {open && (
-        <div className="fixed inset-0 z-50 bg-foreground/40 animate-in fade-in-0" onClick={() => setOpen(false)}>
-          <div
-            className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card shadow-2xl animate-in slide-in-from-left"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex h-16 items-center justify-between px-5">
-              <Brand />
-              <button onClick={() => setOpen(false)} className="text-muted-foreground" aria-label={t("close")}>
-                <X className="size-5" />
-              </button>
-            </div>
-            <NavList onNavigate={() => setOpen(false)} />
-            <UserCard user={user} />
-          </div>
+        <div className="flex h-16 shrink-0 items-center justify-between px-5">
+          <Brand />
+          <button onClick={() => setOpen(false)} className="-mr-2 rounded-md p-2 text-muted-foreground" aria-label={t("close")}>
+            <X className="size-5" />
+          </button>
         </div>
-      )}
-    </div>
+        <NavList onNavigate={() => setOpen(false)} />
+        <UserCard user={user} />
+      </div>
+    </div>,
+    document.body,
   );
 }

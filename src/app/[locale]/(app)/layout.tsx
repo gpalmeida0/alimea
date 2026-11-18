@@ -3,7 +3,8 @@ import { redirect } from "@/i18n/routing";
 import { getAuthNid, getProfile, listAppointments, listClients } from "@/lib/data/repo";
 import { fileUrl } from "@/lib/files";
 import { themeCss } from "@/lib/theme";
-import { Sidebar } from "@/components/shell/sidebar";
+import { MobileNav, Sidebar } from "@/components/shell/sidebar";
+import { BottomNav } from "@/components/shell/bottom-nav";
 import { Topbar } from "@/components/shell/topbar";
 
 // Per-tenant data — never statically cache these routes.
@@ -46,11 +47,13 @@ export default async function AppLayout({
       </a>
       <Sidebar user={user} />
       <div className="md:pl-64">
-        <Topbar user={user} clients={clients.map((c) => ({ id: c.id, name: c.name }))} upcoming={upcoming} />
-        <main id="main" className="mx-auto max-w-6xl px-4 pb-16 pt-6 md:px-8 md:pt-8">
+        <Topbar clients={clients.map((c) => ({ id: c.id, name: c.name }))} upcoming={upcoming} />
+        <main id="main" className="mx-auto max-w-6xl px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-6 md:px-8 md:pb-16 md:pt-8">
           {children}
         </main>
       </div>
+      <BottomNav />
+      <MobileNav user={user} />
     </div>
   );
 }

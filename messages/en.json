@@ -19,7 +19,10 @@
       "work": "Daily work",
       "library": "Clinical library",
       "admin": "Practice"
-    }
+    },
+    "more": "More",
+    "agenda": "Schedule",
+    "home": "Home"
   },
   "mets": {
     "title": "Activities (METs)",
