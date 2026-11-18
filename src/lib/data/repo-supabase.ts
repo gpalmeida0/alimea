@@ -187,6 +187,7 @@ const toPlan = (r: Row): MealPlan => ({
   motivationalQuote: opt(r.motivational_quote),
   nextAppointment: opt(r.next_appointment),
   hideFoodItems: r.hide_food_items === true || undefined,
+  status: r.status === "draft" || r.status === "done" ? r.status : undefined,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -681,6 +682,7 @@ export async function createPlan(data: Partial<MealPlan> & { clientId: string })
           motivational_quote: data.motivationalQuote ?? "",
           next_appointment: data.nextAppointment ?? "",
           hide_food_items: data.hideFoodItems ?? false,
+          ...(data.status ? { status: data.status } : {}),
         })
         .select("*")
         .single(),
@@ -707,6 +709,7 @@ export async function updatePlan(
       motivationalQuote: "motivational_quote",
       nextAppointment: "next_appointment",
       hideFoodItems: "hide_food_items",
+      status: "status",
     }),
     updated_at: new Date().toISOString(),
   };

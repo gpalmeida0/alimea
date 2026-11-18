@@ -17,6 +17,7 @@ import type {
   Meal,
   Measurements,
   PlanLanguage,
+  PlanStatus,
   RecipeItem,
   Sex,
 } from "@/lib/types";
@@ -179,8 +180,9 @@ export async function startConsultationAction(
           supplementation: source.supplementation,
           notes: source.notes,
           motivationalQuote: source.motivationalQuote,
+          status: "draft",
         }
-      : { clientId, consultationId: consult.id },
+      : { clientId, consultationId: consult.id, status: "draft" },
   );
   refresh();
   redirect({ href: `/clients/${clientId}/plans/${plan.id}`, locale });
@@ -265,6 +267,7 @@ export type PlanPayload = {
   motivationalQuote?: string;
   nextAppointment?: string;
   hideFoodItems?: boolean;
+  status?: PlanStatus;
 };
 
 const mealsSchema = z.array(
@@ -292,6 +295,7 @@ async function persistPlan(planId: string, payload: PlanPayload) {
     motivationalQuote: payload.motivationalQuote ?? "",
     nextAppointment: payload.nextAppointment ?? "",
     hideFoodItems: payload.hideFoodItems === true,
+    ...(payload.status === "draft" || payload.status === "done" ? { status: payload.status } : {}),
   });
   if (!plan) throw new Error("Plan not found");
   return plan;
@@ -307,7 +311,7 @@ export async function savePlanAction(_locale: string, planId: string, payload: P
 export async function duplicateCurrentPlanAction(locale: string, planId: string, clientId: string) {
   const src = await repo.getPlan(planId);
   if (!src) return;
-  const copy = await repo.createPlan({ ...src, meals: cloneMeals(src.meals), consultationId: undefined, clientId });
+  const copy = await repo.createPlan({ ...src, meals: cloneMeals(src.meals), consultationId: undefined, clientId, status: "draft" });
   refresh();
   redirect({ href: `/clients/${clientId}/plans/${copy.id}`, locale });
 }

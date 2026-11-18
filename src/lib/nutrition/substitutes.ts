@@ -10,7 +10,7 @@
 import type { DbFood, FoodItem } from "@/lib/types";
 import { normalizeSearch } from "@/lib/utils";
 import type { Food } from "./foods";
-import { itemTotals, type Totals } from "./items";
+import { itemTotals, itemWeight, portionWeight, type Totals } from "./items";
 
 type PerUnit = FoodItem["perG"];
 
@@ -18,16 +18,18 @@ export interface Candidate {
   name: string;
   /** Food group / category, when known. */
   group?: string;
-  unit: "g" | "mL";
-  /** Nutrition per 1 g (or mL). */
+  /** Nutrition per portion. */
   per: PerUnit;
+  /** Grams (or mL) in one portion, when known. */
+  portionG?: number;
+  portionUnit: "g" | "mL";
   /** Id in the nutritionist's food database, when it comes from there. */
   refId?: string;
 }
 
 export interface Substitute {
   candidate: Candidate;
-  /** Quantity that matches the original's energy. */
+  /** Portions that match the original's energy. */
   qty: number;
   totals: Totals;
   /** Substitute minus original. */
@@ -43,13 +45,24 @@ const perUnit = (f: { kcal?: number | null; protein?: number | null; carbs?: num
   fat: (f.fat ?? 0) / base,
 });
 
-/** Everything a food can be swapped for: the account's own foods first, then the built-in table. */
+/** Everything a food can be swapped for (one portion each): the account's own foods first, then the built-in table. */
 export function candidatePool(dbFoods: DbFood[], staticFoods: Food[]): Candidate[] {
   return [
-    ...dbFoods
-      .filter((f) => !f.archived)
-      .map((f) => ({ name: f.name, group: f.category || undefined, unit: f.baseUnit, per: perUnit(f, f.refQty > 0 ? f.refQty : 100), refId: f.id })),
-    ...staticFoods.map((f) => ({ name: f.name, group: f.group || undefined, unit: "g" as const, per: perUnit(f, f.qtyG && f.qtyG > 0 ? f.qtyG : 100) })),
+    ...dbFoods.filter((f) => !f.archived).map((f) => ({
+      name: f.name,
+      group: f.category || undefined,
+      per: perUnit(f, 1),
+      portionG: portionWeight(f.refQty, f.category),
+      portionUnit: f.baseUnit,
+      refId: f.id,
+    })),
+    ...staticFoods.map((f) => ({
+      name: f.name,
+      group: f.group || undefined,
+      per: perUnit(f, 1),
+      portionG: portionWeight(f.qtyG, f.group),
+      portionUnit: "g" as const,
+    })),
   ];
 }
 
@@ -60,13 +73,15 @@ function shares(per: PerUnit): [number, number, number] | undefined {
   return sum > 0 ? [p / sum, c / sum, f / sum] : undefined;
 }
 
-/** Same food, whatever the serving: per-100 values rounded to the unit. */
-const profileKey = (per: PerUnit) => [per.kcal, per.protein, per.carbs, per.fat].map((v) => Math.round(v * 100)).join("|");
+/** Same food, whatever the serving: per-100 g values when the weight is known, else per portion. */
+const profileKey = (per: PerUnit, grams?: number) =>
+  [per.kcal, per.protein, per.carbs, per.fat].map((v) => Math.round((grams ? v / grams : v) * 100)).join("|");
 
-/** Quantities people can measure: steps of 5 above 20, whole units below. */
-const practical = (qty: number) => (qty >= 20 ? Math.round(qty / 5) * 5 : Math.round(qty));
+/** Portions people can serve: halves. */
+const practical = (portions: number) => Math.round(portions * 2) / 2;
 
 const MAX_DISTANCE = 0.2;
+const MAX_ENERGY_GAP = 0.15;
 
 /**
  * Foods that can replace `item`, best match first. Each comes with the
@@ -80,7 +95,8 @@ export function findSubstitutes(item: FoodItem, pool: Candidate[], limit = 8): S
 
   const name = normalizeSearch(item.name);
   const self = pool.find((c) => (item.refId && c.refId === item.refId) || normalizeSearch(c.name) === name);
-  const seen = new Set([profileKey(item.perG)]);
+  const weight = itemWeight(item);
+  const seen = new Set([profileKey(item.perG, item.unit === "porção" ? item.portionG : 1)]);
   const found: Substitute[] = [];
 
   for (const candidate of pool) {
@@ -89,15 +105,18 @@ export function findSubstitutes(item: FoodItem, pool: Candidate[], limit = 8): S
     const distance = profile.reduce((sum, share, i) => sum + Math.abs(share - target[i]), 0) / 2;
     if (distance > MAX_DISTANCE) continue;
     const qty = practical(original.kcal / candidate.per.kcal);
-    if (qty < 1 || qty > 1000) continue;
-    const key = profileKey(candidate.per);
+    if (qty < 0.5 || qty > 10) continue;
+    const key = profileKey(candidate.per, candidate.portionG);
     if (seen.has(key)) continue;
     seen.add(key);
 
     const totals = itemTotals({ ...item, qtyG: qty, perG: candidate.per });
-    // Prefer the same food group, and servings of a similar size.
+    // Half portions can't always hit the energy: skip swaps more than 15% off.
+    if (Math.abs(totals.kcal - original.kcal) > MAX_ENERGY_GAP * original.kcal) continue;
+    // Prefer the same food group, and servings of a similar size (by weight when both are known, else portions).
     const sameGroup = Boolean(self?.group && candidate.group === self.group);
-    const score = distance + 0.03 * Math.abs(Math.log(qty / item.qtyG)) - (sameGroup ? 0.05 : 0);
+    const ratio = weight && candidate.portionG ? (qty * candidate.portionG) / weight.qty : item.unit === "porção" ? qty / item.qtyG : 1;
+    const score = distance + 0.03 * Math.abs(Math.log(ratio)) - (sameGroup ? 0.05 : 0);
     found.push({
       candidate,
       qty,
@@ -112,5 +131,15 @@ export function findSubstitutes(item: FoodItem, pool: Candidate[], limit = 8): S
 /** The plan item that replaces `original` with `substitute` (same position, same id). */
 export function substituteToItem(original: FoodItem, substitute: Substitute): FoodItem {
   const { candidate, qty } = substitute;
-  return { id: original.id, name: candidate.name, qtyG: qty, unit: candidate.unit, kind: "food", refId: candidate.refId, perG: candidate.per };
+  return {
+    id: original.id,
+    name: candidate.name,
+    qtyG: qty,
+    unit: "porção",
+    kind: "food",
+    refId: candidate.refId,
+    portionG: candidate.portionG,
+    portionUnit: candidate.portionUnit,
+    perG: candidate.per,
+  };
 }

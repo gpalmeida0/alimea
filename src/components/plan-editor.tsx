@@ -30,9 +30,9 @@ import { FoodPicker } from "@/components/food-picker";
 import { ShoppingListDialog, SubstituteDialog } from "@/components/plan-extras";
 import { useServerAction } from "@/hooks/use-server-action";
 import { deletePlanAction, duplicateCurrentPlanAction, saveAsTemplateAction } from "@/app/actions";
-import { cloneMeals, optionTotals, planTotals, roundTotals, hasItems, type Totals } from "@/lib/nutrition/items";
+import { cloneMeals, hasItems, isPortionFood, itemWeight, optionTotals, planTotals, roundTotals, type Totals } from "@/lib/nutrition/items";
 import { cn, newId } from "@/lib/utils";
-import type { DbFood, FoodItem, Meal, MealOption, PlanLanguage, Recipe, RecommendationCategory } from "@/lib/types";
+import type { DbFood, FoodItem, Meal, MealOption, PlanLanguage, PlanStatus, Recipe, RecommendationCategory } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Meal plan editor. Controlled: the parent owns the draft and persistence
@@ -48,6 +48,7 @@ export interface PlanDraft {
   motivationalQuote: string;
   nextAppointment: string;
   hideFoodItems: boolean;
+  status: PlanStatus;
 }
 
 export interface RecLite {
@@ -347,6 +348,17 @@ export function PlanEditor({
       <div className="order-first grid gap-4 sm:grid-cols-2 xl:order-none xl:sticky xl:top-36 xl:block xl:max-h-[calc(100vh-10rem)] xl:space-y-4 xl:self-start xl:overflow-y-auto xl:pb-4 scroll-thin">
         <Card>
           <CardContent className="space-y-4 pt-5">
+            <Field label={t("statusLabel")}>
+              <Segmented
+                value={draft.status}
+                onChange={(v) => set("status", v)}
+                items={[
+                  { value: "draft", label: t("status.draft") },
+                  { value: "done", label: t("status.done") },
+                ]}
+                className="flex w-full [&>button]:flex-1 [&>button]:justify-center"
+              />
+            </Field>
             <Field label={t("planLanguage")}>
               <Segmented
                 value={draft.language}
@@ -644,6 +656,14 @@ function MealCard({
                       aria-label={`${it.name} — ${t("quantity")}`}
                     />
                     <span className="w-10 text-muted-foreground">{it.unit === "porção" ? t("portion") : (it.unit ?? "g")}</span>
+                    {isPortionFood(it) && (
+                      <span className="hidden w-14 text-right lining-nums tabular-nums text-muted-foreground sm:inline">
+                        {(() => {
+                          const w = itemWeight(it);
+                          return w ? `${Math.round(w.qty)} ${w.unit}` : "";
+                        })()}
+                      </span>
+                    )}
                     <span className="w-16 text-right font-medium lining-nums tabular-nums">{Math.round(it.qtyG * it.perG.kcal)} kcal</span>
                     {it.kind !== "recipe" && (
                       <button

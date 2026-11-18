@@ -263,10 +263,13 @@ export function suggestGebFormula(i: EnergyInput & { athlete?: boolean }): strin
   return sex === "male" ? "schofield_10_18_boy" : "schofield_10_18_girl";
 }
 
+/** Unrounded GEB — feed this into get() so GET matches the Excel to the kcal. */
+export function gebExact(key: string | undefined, input: EnergyInput): number | undefined {
+  return getGebFormula(key)?.compute(input) ?? undefined;
+}
+
 export function geb(key: string | undefined, input: EnergyInput): number | undefined {
-  const f = getGebFormula(key);
-  if (!f) return undefined;
-  const v = f.compute(input);
+  const v = gebExact(key, input);
   return v == null ? undefined : Math.round(v);
 }
 
@@ -281,7 +284,6 @@ export const PAL_OPTIONS: { value: number; labelKey: string }[] = [
 
 export const DEFAULT_PAL = 1.375;
 
-/** GET = GEB × PAL × stress. */
 /** Formulas applicable to this person (sex + age range); others are still selectable. */
 export function isApplicable(f: GebFormula, i: EnergyInput): boolean {
   if (f.sex && i.sex && f.sex !== i.sex) return false;
@@ -290,11 +292,16 @@ export function isApplicable(f: GebFormula, i: EnergyInput): boolean {
   return true;
 }
 
+/** Thermic effect of food, added on top of GEB × PAL when enabled (the Excel's "GET × 0,10"). */
+export const TEF_FRACTION = 0.1;
+
+/** GET = GEB × PAL × stress (× 1.10 with the thermic effect of food). Rounded once, at the end. */
 export function get(
   gebValue: number | undefined,
   pal: number = DEFAULT_PAL,
   stressFactor = 1,
+  withTef = false,
 ): number | undefined {
   if (gebValue == null) return undefined;
-  return Math.round(gebValue * pal * (stressFactor || 1));
+  return Math.round(gebValue * (pal || DEFAULT_PAL) * (stressFactor || 1) * (withTef ? 1 + TEF_FRACTION : 1));
 }

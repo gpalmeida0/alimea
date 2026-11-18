@@ -45,6 +45,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
   const now = Date.now();
   const upcoming = appts.filter((a) => a.clientId === id && a.status === "scheduled" && new Date(a.date).getTime() >= now);
   const standalonePlans = plans.filter((p) => !p.consultationId);
+  const planStatus = new Map(plans.map((p) => [p.id, p.status ?? "done"]));
+  const tp = await getTranslations("plan");
 
   // Progress series (oldest → newest).
   const series = [...consults].reverse().map<ProgressPoint>((c) => ({
@@ -172,8 +174,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
                       </p>
                     </div>
                     {c.planId && (
-                      <Badge>
-                        <FileText className="size-3" /> {t("plan")}
+                      <Badge variant={planStatus.get(c.planId) === "draft" ? "accent" : "default"}>
+                        <FileText className="size-3" /> {t("plan")} · {tp(`status.${planStatus.get(c.planId) ?? "done"}`)}
                       </Badge>
                     )}
                   </Link>
@@ -232,7 +234,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ l
                     className="flex items-center justify-between rounded-md px-2 py-2 text-sm hover:bg-muted"
                   >
                     <span>{formatDate(p.updatedAt, locale)}</span>
-                    <Badge variant="muted">{p.language === "en" ? "EN" : "PT"}</Badge>
+                    <span className="flex items-center gap-1.5">
+                      <Badge variant={p.status === "draft" ? "accent" : "default"}>{tp(`status.${p.status ?? "done"}`)}</Badge>
+                      <Badge variant="muted">{p.language === "en" ? "EN" : "PT"}</Badge>
+                    </span>
                   </Link>
                 ))}
               </CardContent>

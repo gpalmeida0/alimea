@@ -13,36 +13,58 @@ const ZERO: Totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
 const newId = () => makeId("item");
 
-/** Build a FoodItem from a static (JSON) database food + chosen grams. */
-export function foodToItem(food: Food, qtyG?: number): FoodItem {
-  const base = food.qtyG && food.qtyG > 0 ? food.qtyG : 100;
-  const perG = {
-    kcal: (food.kcal ?? 0) / base,
-    protein: (food.protein ?? 0) / base,
-    carbs: (food.carbs ?? 0) / base,
-    fat: (food.fat ?? 0) / base,
-  };
-  return { id: newId(), name: food.name, qtyG: qtyG ?? base, unit: "g", kind: "food", perG };
+/**
+ * Food group whose "Quantidade" column counts equivalents rather than grams
+ * (e.g. "100gr de carne … OU 4 Ovos" = 4), so it has no portion weight.
+ */
+export const EQUIVALENTS_GROUP = "Equivalentes";
+
+/** Grams (or mL) in one portion, when the table gives a real weight. */
+export function portionWeight(qty: number | null | undefined, group?: string | null): number | undefined {
+  return qty && qty > 0 && group?.trim() !== EQUIVALENTS_GROUP ? qty : undefined;
 }
 
-/** Build a FoodItem from a nutritionist's database food (BOO-57). */
-export function dbFoodToItem(food: DbFood, qty?: number): FoodItem {
-  const base = food.refQty && food.refQty > 0 ? food.refQty : 100;
-  const perG = {
-    kcal: (food.kcal ?? 0) / base,
-    protein: (food.protein ?? 0) / base,
-    carbs: (food.carbs ?? 0) / base,
-    fat: (food.fat ?? 0) / base,
-  };
+/**
+ * Build a plan item from a built-in (Excel) food. Every row of the table is one
+ * portion: the values are per portion and the quantity is a number of
+ * portions (1, 1.5, 0.5…), exactly like the Excel's "Quantidade" column.
+ */
+export function foodToItem(food: Food, portions = 1): FoodItem {
   return {
     id: newId(),
     name: food.name,
-    qtyG: qty ?? base,
-    unit: food.baseUnit,
+    qtyG: portions,
+    unit: "porção",
+    kind: "food",
+    portionG: portionWeight(food.qtyG, food.group),
+    portionUnit: "g",
+    perG: { kcal: food.kcal ?? 0, protein: food.protein ?? 0, carbs: food.carbs ?? 0, fat: food.fat ?? 0 },
+  };
+}
+
+/** Build a plan item from one of the nutritionist's foods: 1 portion = its reference quantity (BOO-57). */
+export function dbFoodToItem(food: DbFood, portions = 1): FoodItem {
+  return {
+    id: newId(),
+    name: food.name,
+    qtyG: portions,
+    unit: "porção",
     kind: "food",
     refId: food.id,
-    perG,
+    portionG: portionWeight(food.refQty, food.category),
+    portionUnit: food.baseUnit,
+    perG: { kcal: food.kcal ?? 0, protein: food.protein ?? 0, carbs: food.carbs ?? 0, fat: food.fat ?? 0 },
   };
+}
+
+/** A food measured in portions (as opposed to older gram-based items and recipes). */
+export const isPortionFood = (item: FoodItem) => item.kind !== "recipe" && item.unit === "porção";
+
+/** Weight of an item in grams/mL, when known. */
+export function itemWeight(item: FoodItem): { qty: number; unit: "g" | "mL" } | undefined {
+  if (isPortionFood(item)) return item.portionG ? { qty: item.qtyG * item.portionG, unit: item.portionUnit ?? "g" } : undefined;
+  if (item.kind !== "recipe" && (item.unit === "g" || item.unit === "mL" || !item.unit)) return { qty: item.qtyG, unit: item.unit === "mL" ? "mL" : "g" };
+  return undefined;
 }
 
 /** Total and per-portion nutrition of a recipe (BOO-58). */
@@ -150,9 +172,18 @@ export function cloneMeals(meals: Meal[]): Meal[] {
   }));
 }
 
-/** Human line for a food item, e.g. "40 g Aveia" / "1 porção Panquecas". */
-export function formatItem(item: FoodItem, portionWord = "porção"): string {
+const fmtQty = (n: number, decimal = ",") => String(Number.isInteger(n) ? n : Math.round(n * 100) / 100).replace(".", decimal);
+
+/**
+ * Human line for a plan item:
+ * "1,5 × Pão de mistura (93 g)" (portion foods), "1 porção Panquecas" (recipes),
+ * "40 g Aveia" (older gram-based items).
+ */
+export function formatItem(item: FoodItem, portionWord = "porção", decimal = ","): string {
+  if (isPortionFood(item)) {
+    const w = itemWeight(item);
+    return `${fmtQty(item.qtyG, decimal)} × ${item.name}${w ? ` (${fmtQty(Math.round(w.qty), decimal)} ${w.unit})` : ""}`;
+  }
   const unit = item.unit === "porção" ? portionWord : item.unit ?? "g";
-  const qty = Number.isInteger(item.qtyG) ? item.qtyG : Math.round(item.qtyG * 10) / 10;
-  return `${qty} ${unit} ${item.name}`;
+  return `${fmtQty(item.qtyG, decimal)} ${unit} ${item.name}`;
 }

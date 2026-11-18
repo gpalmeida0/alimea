@@ -57,6 +57,8 @@ export default async function PlanPage({ params }: { params: Promise<{ locale: s
     motivationalQuote: plan.motivationalQuote ?? "",
     nextAppointment: plan.nextAppointment ?? "",
     hideFoodItems: plan.hideFoodItems ?? false,
+    // Plans from before the status existed count as finished.
+    status: plan.status ?? "done",
   };
   const ctx: PlanEditorContext = {
     planId: plan.id,

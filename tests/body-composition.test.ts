@@ -24,14 +24,14 @@ const value = (results: { key: string; value?: number }[], key: string) => resul
 test("adults: only Evans and Withers, for athletes and non-athletes alike", () => {
   const { results, average: avg } = bodyFatPercent(man);
   assert.deepEqual(results.map((r) => r.key), ["evans", "whiters"]);
-  assert.equal(value(results, "evans"), r1(8.9976 + 0.24658 * (18 + 15 + 12) - 6.343));
+  assert.equal(value(results, "evans"), r1(8.997 + 0.24658 * (18 + 15 + 12) - 6.343));
   assert.equal(value(results, "whiters"), r1(siri495(1.0988 - 0.0004 * (12 + 14 + 6 + 10 + 18 + 15 + 9))));
   assert.equal(avg, average(results));
 });
 
 test("adults (women): Evans has no sex term and subtracts the ethnicity term", () => {
   const { results } = bodyFatPercent({ ...woman, ethnicity: "black" });
-  assert.equal(value(results, "evans"), r1(8.9976 + 0.24658 * 45 - 1.998));
+  assert.equal(value(results, "evans"), r1(8.997 + 0.24658 * 45 - 1.998));
   // Withers needs all seven skinfolds.
   assert.equal(value(bodyFatPercent({ ...woman, skinfolds: { ...skinfolds, geminal: undefined } }).results, "whiters"), undefined);
 });

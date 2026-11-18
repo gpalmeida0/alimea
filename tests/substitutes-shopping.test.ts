@@ -24,17 +24,17 @@ const TABLE = [
   food("Sem dados", "", 0, null as never, null as never, null as never, null as never),
 ];
 
-test("candidatePool: the account's foods first, archived ones excluded, values per gram", () => {
+test("candidatePool: the account's foods first, archived ones excluded, values per portion", () => {
   const pool = candidatePool([db({}), db({ id: "d2", name: "Velho", archived: true }), db({ id: "d3", name: "Leite", baseUnit: "mL", refQty: 0, category: "" })], TABLE);
-  assert.deepEqual(pool.slice(0, 2).map((c) => [c.name, c.refId, c.unit, c.group]), [["Quinoa", "d1", "g", "Cereais"], ["Leite", "d3", "mL", undefined]]);
-  assert.equal(pool[0].per.kcal, 3.68);
+  assert.deepEqual(pool.slice(0, 2).map((c) => [c.name, c.refId, c.portionG, c.portionUnit, c.group]), [["Quinoa", "d1", 100, "g", "Cereais"], ["Leite", "d3", undefined, "mL", undefined]]);
+  assert.equal(pool[0].per.kcal, 368);
   assert.equal(pool.length, 2 + TABLE.length);
-  assert.equal(pool.find((c) => c.name === "Azeite")!.per.fat, 1);
+  assert.equal(pool.find((c) => c.name === "Azeite")!.per.fat, 10);
   assert.deepEqual(pool.find((c) => c.name === "Sem dados")!.per, { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 });
 
 test("findSubstitutes: similar macro profile, same energy, never the food itself", () => {
-  const item = foodToItem(rice, 60); // 210 kcal
+  const item = foodToItem(rice, 1); // 350 kcal
   const subs = findSubstitutes(item, candidatePool([db({})], TABLE));
   const names = subs.map((s) => s.candidate.name);
   assert.deepEqual(names, ["Massa", "Batata", "Quinoa"], "closest macro profile first; same group and similar serving break ties");
@@ -42,25 +42,25 @@ test("findSubstitutes: similar macro profile, same energy, never the food itself
   assert.ok(!names.includes("Frango") && !names.includes("Azeite"), "different macro profile");
 
   for (const s of subs) {
-    assert.ok(Math.abs(s.totals.kcal - 210) <= 12, `${s.candidate.name}: ${s.totals.kcal} kcal`);
-    assert.equal(s.qty % 5, 0);
-    assert.equal(Math.round(s.delta.kcal), Math.round(s.totals.kcal - 210));
+    assert.ok(Math.abs(s.totals.kcal - 350) <= 25, `${s.candidate.name}: ${s.totals.kcal} kcal`);
+    assert.equal((s.qty * 2) % 1, 0, "whole or half portions");
+    assert.equal(Math.round(s.delta.kcal), Math.round(s.totals.kcal - 350));
   }
-  assert.equal(subs.find((s) => s.candidate.name === "Batata")!.qty, 265);
+  assert.equal(subs.find((s) => s.candidate.name === "Batata")!.qty, 4.5);
   assert.equal(findSubstitutes(item, candidatePool([db({})], TABLE), 1).length, 1);
 });
 
-test("findSubstitutes: small servings use whole units; nothing for recipes, empty or unmeasurable items", () => {
+test("findSubstitutes: half portions; nothing for recipes, empty or unmeasurable items", () => {
   const pool = candidatePool([], TABLE);
-  const spoon = findSubstitutes(foodToItem(rice, 4), pool).find((s) => s.candidate.name === "Massa")!;
-  assert.equal(spoon.qty, 4);
+  const half = findSubstitutes(foodToItem(rice, 0.5), pool).find((s) => s.candidate.name === "Massa")!;
+  assert.equal(half.qty, 0.5);
 
-  const item = foodToItem(rice, 60);
+  const item = foodToItem(rice, 1);
   assert.deepEqual(findSubstitutes({ ...item, kind: "recipe" }, pool), []);
   assert.deepEqual(findSubstitutes({ ...item, qtyG: 0 }, pool), []);
   assert.deepEqual(findSubstitutes({ ...item, perG: { kcal: 0, protein: 0, carbs: 0, fat: 0 } }, pool), []);
-  // 5 g of rice would need under 1 g of nothing, and 2 kg of rice over 1 kg of potato.
-  assert.ok(!findSubstitutes(foodToItem(rice, 2000), pool).some((s) => s.candidate.name === "Batata"));
+  // 20 portions of rice would need over 10 portions of potato.
+  assert.ok(!findSubstitutes(foodToItem(rice, 20), pool).some((s) => s.candidate.name === "Batata"));
 });
 
 test("findSubstitutes: an item linked by id excludes its own database food even if renamed", () => {
@@ -70,11 +70,11 @@ test("findSubstitutes: an item linked by id excludes its own database food even 
 });
 
 test("substituteToItem keeps the item's place and carries the new food's values", () => {
-  const item = foodToItem(rice, 60);
+  const item = foodToItem(rice, 1);
   const [best] = findSubstitutes(item, candidatePool([db({})], TABLE));
   const next = substituteToItem(item, best);
   assert.equal(next.id, item.id);
-  assert.deepEqual([next.name, next.qtyG, next.unit, next.kind, next.refId], ["Massa", 60, "g", "food", undefined]);
+  assert.deepEqual([next.name, next.qtyG, next.unit, next.kind, next.refId, next.portionG], ["Massa", 1, "porção", "food", undefined, 100]);
   assert.equal(itemTotals(next).kcal, best.totals.kcal);
 });
 
@@ -82,7 +82,7 @@ test("findSubstitutes on the real food table returns sensible bread swaps", () =
   const bread = searchFoods("Pão de trigo")[0];
   const subs = findSubstitutes(foodToItem(bread), candidatePool([], FOODS));
   assert.ok(subs.length >= 3);
-  assert.ok(subs.every((s) => Math.abs(s.delta.kcal) < 15));
+  assert.ok(subs.every((s) => Math.abs(s.delta.kcal) / itemTotals(foodToItem(bread)).kcal <= 0.25));
 });
 
 // --- Shopping list -----------------------------------------------------------
@@ -131,6 +131,9 @@ test("shoppingList: alternating options splits the days between them", () => {
   // Small quantities round up to whole units, portions to halves.
   const small = [{ id: "m", name: "x", options: [{ id: "o", content: "", items: [item("Sal", 1.2), item("Bolo", 0.3, { unit: "porção" })] }] }] as unknown as Meal[];
   assert.deepEqual(flat(shoppingList(small, { days: 1, scope: "first" })), { Sal: "2 g @", Bolo: "0.5 porção @" });
+  // Portion foods are bought by weight; equivalents (no weight) by portions.
+  const portions = [{ id: "m", name: "x", options: [{ id: "o", content: "", items: [item("Pão", 1.5, { unit: "porção", portionG: 62 }), item("Carne OU ovos", 1, { unit: "porção" })] }] }] as unknown as Meal[];
+  assert.deepEqual(flat(shoppingList(portions, { days: 7, scope: "first" })), { Pão: "655 g @", "Carne OU ovos": "7 porção @" });
   // A recipe with no servings set counts as one serving.
   const single = shoppingList([{ id: "m", name: "x", options: [{ id: "o", content: "", items: [item("P", 1, { kind: "recipe", refId: "r1", unit: "porção" })] }] }] as unknown as Meal[], {
     days: 1,

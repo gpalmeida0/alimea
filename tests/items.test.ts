@@ -5,6 +5,7 @@ import {
   foodToItem,
   formatItem,
   hasItems,
+  itemWeight,
   itemTotals,
   mealTotals,
   optionTotals,
@@ -22,27 +23,34 @@ const oats: Food = { group: "Cereais", name: "Aveia", portion: "40 g", qtyG: 40,
 const yogurt = { id: "f1", nutritionistId: "n", name: "Iogurte", baseUnit: "g", refQty: 125, kcal: 75, protein: 5, carbs: 6, fat: 3, archived: false, createdAt: "2026-01-01" } as unknown as DbFood;
 const dbFood = (over: Partial<DbFood>): DbFood => ({ ...yogurt, ...over });
 
-test("foodToItem: per-gram values from the reference portion; defaults to 100 g", () => {
+test("foodToItem: one row of the table is one portion; quantity is a number of portions", () => {
   const item = foodToItem(oats);
-  assert.equal(item.qtyG, 40);
-  assert.equal(item.kind, "food");
+  assert.deepEqual([item.qtyG, item.unit, item.kind, item.portionG], [1, "porção", "food", 40]);
   assert.deepEqual(roundTotals(itemTotals(item)), { kcal: 152, protein: 5, carbs: 24, fat: 3 });
-  assert.equal(Math.round(itemTotals(foodToItem(oats, 80)).kcal), 304);
+  // 1,5 portions = 1,5 × the row's values, like the Excel's "Quantidade" column.
+  assert.equal(itemTotals(foodToItem(oats, 1.5)).kcal, 228);
+  assert.deepEqual(itemWeight(foodToItem(oats, 1.5)), { qty: 60, unit: "g" });
 
   const bare = foodToItem({ ...oats, qtyG: null, kcal: null, protein: null, carbs: null, fat: null });
-  assert.equal(bare.qtyG, 100);
+  assert.equal(bare.qtyG, 1);
+  assert.equal(bare.portionG, undefined);
   assert.deepEqual(itemTotals(bare), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+  // "Equivalentes" count equivalents in the quantity column, not grams.
+  const meat = foodToItem({ ...oats, group: "Equivalentes", name: "100gr de carne cozinhada OU 4 Ovos", qtyG: 4, kcal: 169.2 });
+  assert.equal(meat.portionG, undefined);
+  assert.equal(itemWeight(meat), undefined);
+  assert.equal(itemTotals(meat).kcal, 169.2);
 });
 
-test("dbFoodToItem: keeps unit and reference id; handles missing values", () => {
-  const item = dbFoodToItem(dbFood({}), 250);
-  assert.equal(item.refId, "f1");
-  assert.equal(item.unit, "g");
+test("dbFoodToItem: 1 portion = the food's reference quantity; keeps unit and reference id", () => {
+  const item = dbFoodToItem(dbFood({}), 2);
+  assert.deepEqual([item.refId, item.unit, item.portionG, item.portionUnit], ["f1", "porção", 125, "g"]);
   assert.equal(itemTotals(item).kcal, 150);
-  assert.equal(dbFoodToItem(dbFood({})).qtyG, 125);
+  assert.equal(dbFoodToItem(dbFood({})).qtyG, 1);
+  assert.deepEqual(itemWeight(dbFoodToItem(dbFood({ baseUnit: "mL" }), 0.5)), { qty: 62.5, unit: "mL" });
 
   const empty = dbFoodToItem(dbFood({ refQty: 0, kcal: undefined, protein: undefined, carbs: undefined, fat: undefined }));
-  assert.equal(empty.qtyG, 100);
+  assert.equal(empty.portionG, undefined);
   assert.deepEqual(itemTotals(empty), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 });
 
@@ -89,13 +97,19 @@ test("meal, option and plan totals use the first option of each meal", () => {
   assert.equal(hasItems(meals.slice(1)), false);
 });
 
-test("formatItem: units, translated portion word and decimals", () => {
+test("formatItem: portions with their weight, recipes, older gram items, decimals", () => {
   const item = foodToItem(oats);
-  assert.equal(formatItem(item), "40 g Aveia");
-  assert.equal(formatItem({ ...item, qtyG: 12.345 }), "12.3 g Aveia");
-  assert.equal(formatItem({ ...item, unit: undefined }), "40 g Aveia");
-  assert.equal(formatItem({ ...item, qtyG: 2, unit: "porção" }, "serving"), "2 serving Aveia");
-  assert.equal(formatItem({ ...item, qtyG: 1, unit: "porção" }), "1 porção Aveia");
+  assert.equal(formatItem(item), "1 × Aveia (40 g)");
+  assert.equal(formatItem({ ...item, qtyG: 1.5 }), "1,5 × Aveia (60 g)");
+  assert.equal(formatItem({ ...item, qtyG: 1.5 }, "portion", "."), "1.5 × Aveia (60 g)");
+  assert.equal(formatItem({ ...item, qtyG: 2, portionG: undefined }), "2 × Aveia");
+  assert.equal(formatItem({ ...item, kind: "recipe", qtyG: 2 }, "serving"), "2 serving Aveia");
+  // Items saved before portions keep their grams.
+  const legacy = { ...item, unit: "g" as const, qtyG: 40, portionG: undefined };
+  assert.equal(formatItem(legacy), "40 g Aveia");
+  assert.equal(formatItem({ ...legacy, qtyG: 12.345 }, "porção", "."), "12.35 g Aveia");
+  assert.equal(formatItem({ ...legacy, unit: undefined }), "40 g Aveia");
+  assert.deepEqual(itemWeight(legacy), { qty: 40, unit: "g" });
 });
 
 test("food database: groups and accent-insensitive search", () => {
